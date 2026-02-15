@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
+import { useLocale } from "next-intl"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -118,6 +119,7 @@ interface DiagnosisReport {
 
 export default function DiagnosisReportPage() {
   const router = useRouter()
+  const locale = useLocale()
   const [report, setReport] = useState<DiagnosisReport | null>(null)
   const [message, setMessage] = useState("")
   const [filter, setFilter] = useState("all")
@@ -538,6 +540,7 @@ export default function DiagnosisReportPage() {
         body: JSON.stringify({
           message: userMessage.text,
           context: context,
+          locale,
         }),
       })
 
@@ -611,6 +614,7 @@ export default function DiagnosisReportPage() {
         body: JSON.stringify({
           message: question,
           context: context,
+          locale,
         }),
       })
 

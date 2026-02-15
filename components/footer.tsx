@@ -1,11 +1,13 @@
 "use client"
 
 import Link from "next/link"
+import { useTranslations } from "next-intl"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Leaf, Share2, Globe } from "lucide-react"
 
 export default function Footer() {
+  const t = useTranslations("footer")
   const currentYear = new Date().getFullYear()
 
   return (
@@ -18,7 +20,7 @@ export default function Footer() {
               <span className="font-[family-name:var(--font-merriweather)] font-bold text-2xl text-[#1A2E1A]">AgroAI</span>
             </div>
             <p className="text-[#4B634B] text-sm leading-relaxed mb-6">
-              Empowering farmers globally with the next generation of AI-driven precision agriculture. Free, forever.
+              {t("tagline")}
             </p>
             <div className="flex gap-4">
               <Link 
@@ -37,61 +39,61 @@ export default function Footer() {
           </div>
 
           <div>
-            <h6 className="font-bold text-[#1A2E1A] mb-6">Product</h6>
+            <h6 className="font-bold text-[#1A2E1A] mb-6">{t("product")}</h6>
             <ul className="space-y-4 text-sm text-[#4B634B]">
               <li>
                 <Link href="/diagnosis" className="hover:text-[#2E7D32] transition-colors">
-                  AI Diagnosis
+                  {t("aiDiagnosis")}
                 </Link>
               </li>
               <li>
                 <Link href="/#pricing" className="hover:text-[#2E7D32] transition-colors">
-                  Always Free
+                  {t("alwaysFree")}
                 </Link>
               </li>
             </ul>
           </div>
 
           <div>
-            <h6 className="font-bold text-[#1A2E1A] mb-6">Company</h6>
+            <h6 className="font-bold text-[#1A2E1A] mb-6">{t("company")}</h6>
             <ul className="space-y-4 text-sm text-[#4B634B]">
               <li>
                 <Link href="/about" className="hover:text-[#2E7D32] transition-colors">
-                  About Us
+                  {t("about")}
                 </Link>
               </li>
               <li>
                 <Link href="/sustainability" className="hover:text-[#2E7D32] transition-colors">
-                  Sustainability
+                  {t("sustainability")}
                 </Link>
               </li>
               <li>
                 <Link href="/careers" className="hover:text-[#2E7D32] transition-colors">
-                  Careers
+                  {t("careers")}
                 </Link>
               </li>
               <li>
                 <Link href="/contact" className="hover:text-[#2E7D32] transition-colors">
-                  Contact
+                  {t("contact")}
                 </Link>
               </li>
             </ul>
           </div>
 
           <div>
-            <h6 className="font-bold text-[#1A2E1A] mb-6">Resources</h6>
+            <h6 className="font-bold text-[#1A2E1A] mb-6">{t("resources")}</h6>
             <ul className="space-y-4 text-sm text-[#4B634B]">
               <li>
                 <Link href="/#faq" className="hover:text-[#2E7D32] transition-colors">
-                  Help & FAQ
+                  {t("helpFaq")}
                 </Link>
               </li>
             </ul>
-            <h6 className="font-bold text-[#1A2E1A] mb-4 mt-8">Newsletter</h6>
+            <h6 className="font-bold text-[#1A2E1A] mb-4 mt-8">{t("newsletter")}</h6>
             <form className="space-y-3" onSubmit={(e) => e.preventDefault()}>
               <Input
                 type="email"
-                placeholder="Enter your email"
+                placeholder={t("emailPlaceholder")}
                 className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-[#2E7D32]/20 focus:border-[#2E7D32] transition-all outline-none"
                 required
               />
@@ -99,20 +101,20 @@ export default function Footer() {
                 type="submit"
                 className="w-full bg-[#2E7D32] hover:bg-[#1B5E20] text-white px-6 py-3 rounded-xl font-bold text-sm transition-all shadow-md"
               >
-                Subscribe
+                {t("subscribe")}
               </Button>
             </form>
           </div>
         </div>
 
         <div className="pt-10 border-t border-gray-200 flex flex-col md:flex-row justify-between items-center gap-4 text-sm text-[#4B634B]">
-          <p>© {currentYear} AgroAI. Helping farmers grow better. All rights reserved.</p>
+          <p>© {currentYear} AgroAI. {t("copyright")}</p>
           <div className="flex gap-8">
             <Link href="#" className="hover:text-[#2E7D32] transition-colors">
-              Privacy Policy
+              {t("privacy")}
             </Link>
             <Link href="#" className="hover:text-[#2E7D32] transition-colors">
-              Terms of Service
+              {t("terms")}
             </Link>
           </div>
         </div>

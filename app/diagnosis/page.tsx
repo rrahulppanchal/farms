@@ -6,6 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
+import { useLocale, useTranslations } from "next-intl"
 
 // Speech Recognition Types
 interface SpeechRecognition extends EventTarget {
@@ -173,6 +174,8 @@ type DiagnosisFormValues = z.infer<typeof diagnosisSchema>
 
 export default function DiagnosisPage() {
   const router = useRouter()
+  const locale = useLocale()
+  const t = useTranslations("diagnosis")
   const [imagePreviews, setImagePreviews] = useState<string[]>([])
   const [soilReportPreview, setSoilReportPreview] = useState<string | null>(null)
   const [weatherImagePreview, setWeatherImagePreview] = useState<string | null>(null)
@@ -466,7 +469,8 @@ export default function DiagnosisPage() {
       formData.append("weatherCondition", data.weatherCondition)
       if (data.customWeatherCondition) formData.append("customWeatherCondition", data.customWeatherCondition)
       if (data.description) formData.append("description", data.description)
-      
+      formData.append("locale", locale)
+
       // Add images
       data.cropImages.forEach((file) => {
         formData.append("cropImages", file)
@@ -554,10 +558,10 @@ export default function DiagnosisPage() {
               </div>
             </div>
             <h3 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-4 font-[family-name:var(--font-merriweather)]">
-              AI Analysis in Progress
+              {t("aiProgressTitle")}
             </h3>
             <p className="text-lg md:text-xl text-gray-600 dark:text-gray-300 mb-6 leading-relaxed">
-              Our AI is analyzing the uploaded crop with the uploaded image evidence. We'll show you the full report shortly.
+              {t("aiProgressDesc")}
             </p>
             <div className="flex items-center justify-center gap-2 text-sm text-gray-500 dark:text-gray-400">
               <div className="w-2 h-2 bg-[#2F855A] rounded-full animate-bounce" style={{ animationDelay: "0ms" }}></div>
@@ -573,10 +577,10 @@ export default function DiagnosisPage() {
           <div className="mb-8 sm:mb-12">
             <div className="max-w-3xl">
               <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold leading-tight text-gray-900 dark:text-white font-[family-name:var(--font-merriweather)] mb-3 sm:mb-4">
-                Comprehensive Multi-Factor Diagnosis
+                {t("title")}
               </h2>
               <p className="text-sm sm:text-base text-gray-600 dark:text-gray-400 leading-relaxed">
-                Upload multi-modal data including crop visuals, soil reports, and environmental context for maximum AI analysis accuracy.
+                {t("subtitle")}
               </p>
             </div>
           </div>
@@ -592,10 +596,10 @@ export default function DiagnosisPage() {
                       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                         <CardTitle className="text-base sm:text-lg font-medium leading-6 text-gray-900 dark:text-white flex items-center gap-2">
                           <Upload className="w-5 h-5 text-[#2F855A] flex-shrink-0" />
-                          Evidence Sources
+                          {t("evidenceSources")}
                         </CardTitle>
                         <span className="text-xs font-medium bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 px-2.5 py-0.5 rounded-full w-fit">
-                          Step 1 of 3
+                          {t("step1")}
                         </span>
                       </div>
                     </CardHeader>
@@ -611,10 +615,10 @@ export default function DiagnosisPage() {
                                 <div className="flex items-center gap-2">
                                   <Leaf className="w-5 h-5 text-[#2F855A] flex-shrink-0" />
                                   <FormLabel className="text-sm font-medium text-gray-900 dark:text-white m-0">
-                                    1. Crop Images <span className="text-red-500">*</span>
+                                    1. {t("cropImages")} <span className="text-red-500">*</span>
                                   </FormLabel>
                                 </div>
-                                <span className="text-xs text-gray-500">Visual Disease Detection</span>
+                                <span className="text-xs text-gray-500">{t("cropImagesHint")}</span>
                               </div>
                               <div className="p-4 sm:p-6">
                                 <FormControl>
@@ -623,7 +627,7 @@ export default function DiagnosisPage() {
                                       <ImageIcon className="mx-auto h-10 w-10 text-gray-400 group-hover:text-[#2F855A] transition-colors" />
                                       <div className="flex text-sm text-gray-600 dark:text-gray-400 justify-center">
                                         <span className="font-medium text-[#2F855A] hover:text-green-600 cursor-pointer">
-                                          Upload visual evidence
+                                          {t("uploadVisual")}
                                         </span>
                                       </div>
                                       <p className="text-xs text-gray-500 dark:text-gray-500">JPG, PNG up to 10MB</p>
@@ -680,7 +684,7 @@ export default function DiagnosisPage() {
                                   <div className="flex items-center gap-2">
                                     <Layers className="w-5 h-5 text-[#C05621] flex-shrink-0" />
                                     <FormLabel className="text-sm font-medium text-gray-900 dark:text-white m-0">
-                                      2. Soil Report/Photos
+                                      2. {t("soilReport")}
                                     </FormLabel>
                                   </div>
                                 </div>
@@ -732,7 +736,7 @@ export default function DiagnosisPage() {
                                   <div className="flex items-center gap-2">
                                     <Cloud className="w-5 h-5 text-blue-500 flex-shrink-0" />
                                     <FormLabel className="text-sm font-medium text-gray-900 dark:text-white m-0">
-                                      3. Weather & Sky
+                                      3. {t("weatherSky")}
                                     </FormLabel>
                                   </div>
                                 </div>
@@ -779,9 +783,9 @@ export default function DiagnosisPage() {
                   {/* Crop & Environmental Details */}
                   <Card className="bg-white dark:bg-[#1F2937] rounded-2xl shadow-[0_4px_6px_-1px_rgba(0,0,0,0.05),0_2px_4px_-1px_rgba(0,0,0,0.03)] border border-gray-200 dark:border-gray-700">
                     <CardHeader className="pb-4 sm:pb-6">
-                      <CardTitle className="text-base sm:text-lg font-medium leading-6 text-gray-900 dark:text-white flex items-center gap-2">
+                        <CardTitle className="text-base sm:text-lg font-medium leading-6 text-gray-900 dark:text-white flex items-center gap-2">
                         <Upload className="w-5 h-5 text-[#2F855A] flex-shrink-0" />
-                        Crop & Environmental Details
+                        {t("cropDetails")}
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-6">
@@ -793,7 +797,7 @@ export default function DiagnosisPage() {
                           render={({ field }) => (
                             <FormItem className="sm:col-span-3">
                               <FormLabel className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                                Crop Type <span className="text-red-500">*</span>
+                                {t("cropType")} <span className="text-red-500">*</span>
                               </FormLabel>
                               <div className="relative">
                                 {/* <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none z-20">
@@ -874,7 +878,7 @@ export default function DiagnosisPage() {
                           render={({ field }) => (
                             <FormItem className="sm:col-span-3">
                               <FormLabel className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                                Growth Stage <span className="text-red-500">*</span>
+                                {t("growthStage")} <span className="text-red-500">*</span>
                               </FormLabel>
                               <div className="relative">
                                 {/* <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none z-20">
@@ -939,7 +943,7 @@ export default function DiagnosisPage() {
                           render={({ field }) => (
                             <FormItem className="sm:col-span-6">
                               <FormLabel className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                                Farm Location <span className="text-red-500">*</span>
+                                {t("location")} <span className="text-red-500">*</span>
                               </FormLabel>
                               <div className="flex flex-col sm:flex-row gap-2 sm:gap-0">
                                 <div className="relative flex-grow focus-within:z-10">
@@ -979,7 +983,7 @@ export default function DiagnosisPage() {
                           render={({ field }) => (
                             <FormItem className="sm:col-span-3">
                               <FormLabel className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                                Soil Condition <span className="text-red-500">*</span>
+                                {t("soilCondition")} <span className="text-red-500">*</span>
                               </FormLabel>
                               <FormControl>
                                 <Select
@@ -1036,7 +1040,7 @@ export default function DiagnosisPage() {
                           render={({ field }) => (
                             <FormItem className="sm:col-span-3">
                               <FormLabel className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                                Recent Weather <span className="text-red-500">*</span>
+                                {t("weatherCondition")} <span className="text-red-500">*</span>
                               </FormLabel>
                               <FormControl>
                                 <Select
@@ -1094,9 +1098,9 @@ export default function DiagnosisPage() {
                           render={({ field }) => (
                             <FormItem className="sm:col-span-6">
                               <FormLabel className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                                Additional Description
+                                {t("additionalDesc")}
                                 <span className="text-xs text-gray-500 dark:text-gray-400 ml-2 font-normal">
-                                  (Optional - Describe symptoms, observations, or concerns)
+                                  {t("additionalDescHint")}
                                 </span>
                               </FormLabel>
                               <div className="relative">
@@ -1162,11 +1166,11 @@ export default function DiagnosisPage() {
                         >
                           <BarChart3 className="w-5 h-5 mr-2" />
                           {form.formState.isSubmitting || isAnalyzing ? (
-                            <span>Analyzing with AI...</span>
+                            <span>{t("analyzing")}</span>
                           ) : (
                             <>
-                              <span className="hidden sm:inline">Run Comprehensive Analysis</span>
-                              <span className="sm:hidden">Run Analysis</span>
+                              <span className="hidden sm:inline">{t("runAnalysis")}</span>
+                              <span className="sm:hidden">{t("runAnalysisShort")}</span>
                             </>
                           )}
                         </Button>

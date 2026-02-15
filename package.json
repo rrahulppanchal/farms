@@ -48,6 +48,7 @@
     "jspdf": "^4.0.0",
     "lucide-react": "^0.454.0",
     "next": "16.0.10",
+    "next-intl": "^3.26.5",
     "next-themes": "^0.4.6",
     "react": "19.2.0",
     "react-day-picker": "9.8.0",
@@ -60,6 +61,11 @@
     "tailwindcss-animate": "^1.0.7",
     "vaul": "^1.1.2",
     "zod": "3.25.76"
+  },
+  "overrides": {
+    "next-intl": {
+      "next": "$next"
+    }
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.9",

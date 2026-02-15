@@ -1,23 +1,23 @@
+import { getTranslations } from "next-intl/server"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
-import { Input } from "@/components/ui/input"
 import Link from "next/link"
-import { 
-  Leaf, 
-  Sparkles, 
-  Calculator, 
-  Bot, 
-  CheckCircle2, 
-  Star, 
-  Globe, 
-  Share2, 
+import {
+  Leaf,
+  Sparkles,
+  Calculator,
+  Bot,
+  CheckCircle2,
+  Star,
   PlayCircle,
-  BarChart3
+  BarChart3,
 } from "lucide-react"
 import Image from "next/image"
 
-export default function Home() {
+export default async function Home() {
+  const t = await getTranslations("home")
+
   return (
     <>
       {/* Hero Section */}
@@ -39,32 +39,33 @@ export default function Home() {
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#2E7D32]/70 opacity-70"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-[#2E7D32]/80"></span>
             </span>
-            Free AI Precision Agriculture for Everyone
+            {t("badge")}
           </div>
           <h1 className="font-[family-name:var(--font-merriweather)] text-5xl md:text-7xl font-bold text-white mb-6 leading-tight drop-shadow-sm">
-            Empowering Every Farmer<br />
-            <span className="text-white">With AI Technology</span>
+            {t("title")}
+            <br />
+            <span className="text-white">{t("titleLine2")}</span>
           </h1>
           <p className="text-xl md:text-2xl text-white/90 max-w-3xl mx-auto mb-10 leading-relaxed font-light">
-            Professional-grade agricultural insights, diagnosis, and treatment plans—now completely free for farmers worldwide.
+            {t("subtitle")}
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             <Link href="/diagnosis">
-              <Button 
-                size="lg" 
+              <Button
+                size="lg"
                 className="w-full sm:w-auto px-8 py-4 bg-[#2E7D32] hover:bg-[#1B5E20] text-white rounded-xl font-bold text-lg transition-all transform hover:-translate-y-1 shadow-lg flex items-center justify-center gap-2"
               >
                 <BarChart3 className="w-5 h-5" />
-                Start Free Analysis
+                {t("ctaAnalysis")}
               </Button>
             </Link>
-            <Button 
+            <Button
               variant="outline"
               size="lg"
               className="w-full sm:w-auto px-8 py-4 bg-white hover:bg-gray-50 text-[#2E7D32] border-white rounded-xl font-bold text-lg transition-all flex items-center justify-center gap-2"
             >
               <PlayCircle className="w-5 h-5" />
-              Watch Demo
+              {t("ctaDemo")}
             </Button>
           </div>
         </div>
@@ -74,8 +75,8 @@ export default function Home() {
       <section className="py-24 bg-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
-            <h2 className="font-[family-name:var(--font-merriweather)] text-3xl md:text-4xl font-bold text-[#1A2E1A] mb-4">The Future of Agriculture</h2>
-            <p className="text-[#4B634B] text-lg max-w-2xl mx-auto">Advanced technology meets traditional wisdom to provide you with the most accurate farming insights available.</p>
+            <h2 className="font-[family-name:var(--font-merriweather)] text-3xl md:text-4xl font-bold text-[#1A2E1A] mb-4">{t("featuresHeading")}</h2>
+            <p className="text-[#4B634B] text-lg max-w-2xl mx-auto">{t("featuresSubtitle")}</p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 lg:gap-8">
             <Card className="relative p-6 sm:p-8 rounded-3xl border border-gray-100 bg-[#FDFDFB] hover:border-[#2E7D32]/30 hover:shadow-[0_10px_40px_-10px_rgba(46,125,50,0.15)] transition-all duration-500 ease-out group cursor-pointer overflow-hidden">
@@ -178,25 +179,25 @@ export default function Home() {
       <section className="py-24 bg-[#FDFDFB] overflow-hidden">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
-            <h2 className="font-[family-name:var(--font-merriweather)] text-3xl md:text-4xl font-bold text-[#1A2E1A]">Three Steps to a Better Yield</h2>
+            <h2 className="font-[family-name:var(--font-merriweather)] text-3xl md:text-4xl font-bold text-[#1A2E1A]">{t("threeStepsHeading")}</h2>
           </div>
           <div className="relative">
             <div className="hidden md:block absolute top-1/2 left-0 w-full h-0.5 border-t-2 border-dashed border-[#2E7D32]/30 -z-10"></div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-12">
               <div className="text-center">
                 <div className="w-20 h-20 rounded-full bg-white border-4 border-[#2E7D32] shadow-lg flex items-center justify-center text-2xl font-bold text-[#2E7D32] mx-auto mb-6 relative">1</div>
-                <h4 className="text-lg font-bold mb-2">Upload Data</h4>
-                <p className="text-[#4B634B] text-sm">Snap a photo of your crop or upload soil test results.</p>
+                <h4 className="text-lg font-bold mb-2">{t("step1Title")}</h4>
+                <p className="text-[#4B634B] text-sm">{t("step1Desc")}</p>
               </div>
               <div className="text-center">
                 <div className="w-20 h-20 rounded-full bg-white border-4 border-[#2E7D32] shadow-lg flex items-center justify-center text-2xl font-bold text-[#2E7D32] mx-auto mb-6">2</div>
-                <h4 className="text-lg font-bold mb-2">Get AI Analysis</h4>
-                <p className="text-[#4B634B] text-sm">Our AI processes thousands of data points instantly.</p>
+                <h4 className="text-lg font-bold mb-2">{t("step2Title")}</h4>
+                <p className="text-[#4B634B] text-sm">{t("step2Desc")}</p>
               </div>
               <div className="text-center">
                 <div className="w-20 h-20 rounded-full bg-white border-4 border-[#2E7D32] shadow-lg flex items-center justify-center text-2xl font-bold text-[#2E7D32] mx-auto mb-6">3</div>
-                <h4 className="text-lg font-bold mb-2">Implement Treatment</h4>
-                <p className="text-[#4B634B] text-sm">Follow your customized guide to restore health.</p>
+                <h4 className="text-lg font-bold mb-2">{t("step3Title")}</h4>
+                <p className="text-[#4B634B] text-sm">{t("step3Desc")}</p>
               </div>
             </div>
           </div>
@@ -214,8 +215,8 @@ export default function Home() {
               </div>
             </div>
             <div className="relative z-10 text-center">
-              <h2 className="font-[family-name:var(--font-merriweather)] text-4xl md:text-5xl font-bold text-[#1A2E1A] mb-4">AgroAI is Free for Everyone</h2>
-              <p className="text-[#4B634B] text-lg mb-12 max-w-2xl mx-auto">Our mission is to democratize precision agriculture. No subscriptions, no hidden fees—just pure agricultural intelligence for all.</p>
+              <h2 className="font-[family-name:var(--font-merriweather)] text-4xl md:text-5xl font-bold text-[#1A2E1A] mb-4">{t("pricingHeading")}</h2>
+              <p className="text-[#4B634B] text-lg mb-12 max-w-2xl mx-auto">{t("pricingSubtitle")}</p>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12 text-left">
                 <div className="flex items-start gap-4 p-4 rounded-2xl bg-[#FDFDFB]">
                   <CheckCircle2 className="w-8 h-8 text-[#2E7D32] shrink-0" />
@@ -240,14 +241,14 @@ export default function Home() {
                 </div>
               </div>
               <Link href="/diagnosis">
-                <Button 
+                <Button
                   size="lg"
                   className="bg-[#2E7D32] hover:bg-[#1B5E20] text-white px-10 py-5 rounded-2xl font-bold text-xl transition-all shadow-lg transform hover:-translate-y-1"
                 >
-                  Get Started For Free
+                  {t("getStartedForFree")}
                 </Button>
               </Link>
-              <p className="mt-6 text-sm text-[#4B634B]">Join over 50,000 farmers worldwide using AgroAI today.</p>
+              <p className="mt-6 text-sm text-[#4B634B]">{t("farmersCount")}</p>
             </div>
           </div>
         </div>
@@ -257,8 +258,8 @@ export default function Home() {
       <section className="py-24 bg-[#FDFDFB]" id="faq">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
-            <h2 className="font-[family-name:var(--font-merriweather)] text-3xl md:text-4xl font-bold text-[#1A2E1A] mb-4">Frequently Asked Questions</h2>
-            <p className="text-[#4B634B] text-lg">Everything you need to know about AgroAI and how it works.</p>
+            <h2 className="font-[family-name:var(--font-merriweather)] text-3xl md:text-4xl font-bold text-[#1A2E1A] mb-4">{t("faqHeading")}</h2>
+            <p className="text-[#4B634B] text-lg">{t("faqSubtitle")}</p>
           </div>
           <Accordion type="single" collapsible className="space-y-4">
             <AccordionItem value="item-1" className="bg-white rounded-2xl border border-gray-100 hover:border-[#2E7D32]/30 transition-all duration-300">

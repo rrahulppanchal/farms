@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { getGeminiLanguageInstruction } from "@/lib/i18n-locales"
 
 // Helper function to convert File to base64
 async function fileToBase64(file: File): Promise<string> {
@@ -92,6 +93,7 @@ export async function POST(request: NextRequest) {
     const weatherCondition = formData.get("weatherCondition") as string
     const customWeatherCondition = formData.get("customWeatherCondition") as string
     const description = formData.get("description") as string || ""
+    const locale = (formData.get("locale") as string) || "en"
 
     // Get crop images
     const cropImages = formData.getAll("cropImages") as File[]
@@ -133,7 +135,13 @@ export async function POST(request: NextRequest) {
     const regionalSoilInfo = getRegionalSoilData(location)
     const locationInfo = parseLocation(location)
 
+    const languageInstruction = getGeminiLanguageInstruction(locale)
+
     const prompt = `You are an expert AI agronomist with deep knowledge of crop diseases, plant pathology, and agricultural best practices. You MUST provide location-specific analysis and recommendations based strictly on the provided location.
+
+CRITICAL LANGUAGE REQUIREMENT:
+${languageInstruction}
+The ENTIRE JSON response (all field values: diseaseName, description, impact text, treatment titles and descriptions, recommendations, etc.) MUST be in that language and script. No English in the response unless the language is English.
 
 CRITICAL LOCATION REQUIREMENT:
 The location "${location}" is the PRIMARY factor for your analysis. ALL recommendations, treatment plans, and environmental assessments MUST be specific to this location. Consider:
