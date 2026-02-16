@@ -81,6 +81,8 @@ import {
   Image as ImageIcon,
   Layers,
   Cloud,
+  CloudRain,
+  Sun,
   X,
   MapPin,
   Navigation,
@@ -90,12 +92,12 @@ import {
   Scissors,
   Thermometer,
   Droplets,
-  CloudRain,
   BarChart3,
   Mic,
   Square,
   Loader2,
   Sparkles,
+  RefreshCw,
 } from "lucide-react"
 import Image from "next/image"
 
@@ -188,6 +190,15 @@ export default function DiagnosisPage() {
   const [recognition, setRecognition] = useState<SpeechRecognition | null>(null)
   const [recordingTime, setRecordingTime] = useState(0)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const [isLocating, setIsLocating] = useState(false)
+  const [weatherData, setWeatherData] = useState<{
+    temp: number
+    conditionKey: string
+    tipKey: string
+    code: number
+    locality: string | null
+  } | null>(null)
+  const [weatherLoading, setWeatherLoading] = useState(true)
 
   const form = useForm<DiagnosisFormValues>({
     resolver: zodResolver(diagnosisSchema),
@@ -197,7 +208,7 @@ export default function DiagnosisPage() {
       customCropType: "",
       growthStage: "",
       customGrowthStage: "",
-      location: "Ames, Iowa, USA",
+      location: "Agra, Uttar Pradesh, 282001, India",
       soilCondition: "",
       customSoilCondition: "",
       weatherCondition: "",
@@ -319,33 +330,127 @@ export default function DiagnosisPage() {
     setWeatherImagePreview(preview)
   }
 
+  // Reverse geocode using OpenStreetMap Nominatim (free, no API key)
+  const reverseGeocode = async (lat: number, lon: number): Promise<string> => {
+    const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`
+    const res = await fetch(url, {
+      headers: { "Accept-Language": locale || "en", "User-Agent": "AgroAI-Diagnosis/1.0" },
+    })
+    if (!res.ok) throw new Error("Geocoding failed")
+    const data = (await res.json()) as { display_name?: string; address?: Record<string, string> }
+    if (data.display_name) return data.display_name
+    // Build from address parts if display_name missing
+    const a = data.address
+    if (a) {
+      const parts = [a.village, a.town, a.city, a.state, a.country].filter(Boolean)
+      if (parts.length) return parts.join(", ")
+    }
+    return `${lat.toFixed(5)}, ${lon.toFixed(5)}`
+  }
+
   const handleLocationDetect = () => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          // In a real app, you would reverse geocode these coordinates
-          const lat = position.coords.latitude
-          const lng = position.coords.longitude
-          form.setValue("location", `${lat}, ${lng}`, {
-            shouldValidate: true,
-            shouldDirty: true,
-          })
-        },
-        (error) => {
-          console.error("Error getting location:", error)
-          form.setError("location", {
-            type: "manual",
-            message: "Failed to get location. Please enter manually.",
-          })
-        }
-      )
-    } else {
+    if (!navigator.geolocation) {
       form.setError("location", {
         type: "manual",
         message: "Geolocation is not supported in your browser.",
       })
+      return
     }
+    setIsLocating(true)
+    form.clearErrors("location")
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const lat = position.coords.latitude
+        const lng = position.coords.longitude
+        try {
+          const address = await reverseGeocode(lat, lng)
+          form.setValue("location", address, {
+            shouldValidate: true,
+            shouldDirty: true,
+          })
+        } catch {
+          form.setValue("location", `${lat.toFixed(5)}, ${lng.toFixed(5)}`, {
+            shouldValidate: true,
+            shouldDirty: true,
+          })
+        } finally {
+          setIsLocating(false)
+        }
+      },
+      (error) => {
+        console.error("Error getting location:", error)
+        setIsLocating(false)
+        form.setError("location", {
+          type: "manual",
+          message: "Failed to get location. Please enter manually.",
+        })
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+    )
   }
+
+  // Map Open-Meteo WMO weather code to translation keys for condition and tip (regional language)
+  const getWeatherConditionAndTipKeys = (code: number): { conditionKey: string; tipKey: string } => {
+    if (code === 0) return { conditionKey: "weatherConditionClear", tipKey: "weatherTipClear" }
+    if (code >= 1 && code <= 3) return { conditionKey: "weatherConditionPartlyCloudy", tipKey: "weatherTipPartlyCloudy" }
+    if (code >= 45 && code <= 48) return { conditionKey: "weatherConditionFog", tipKey: "weatherTipFog" }
+    if (code >= 51 && code <= 67) return { conditionKey: "weatherConditionRain", tipKey: "weatherTipRain" }
+    if (code >= 71 && code <= 77) return { conditionKey: "weatherConditionSnow", tipKey: "weatherTipSnow" }
+    if (code >= 80 && code <= 82) return { conditionKey: "weatherConditionRainShowers", tipKey: "weatherTipRainShowers" }
+    if (code >= 85 && code <= 86) return { conditionKey: "weatherConditionSnowShowers", tipKey: "weatherTipSnowShowers" }
+    if (code >= 95 && code <= 99) return { conditionKey: "weatherConditionThunderstorm", tipKey: "weatherTipThunderstorm" }
+    return { conditionKey: "weatherConditionVariable", tipKey: "weatherTipVariable" }
+  }
+
+  // Fetch weather from Open-Meteo (free, no API key) using browser location
+  useEffect(() => {
+    if (typeof window === "undefined" || !navigator.geolocation) {
+      setWeatherLoading(false)
+      return
+    }
+    let cancelled = false
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        if (cancelled) return
+        const { latitude, longitude } = position.coords
+        try {
+          const [weatherRes, locality] = await Promise.all([
+            fetch(
+              `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,weather_code,relative_humidity_2m,precipitation&timezone=auto`
+            ),
+            reverseGeocode(latitude, longitude).catch(() => null),
+          ])
+          if (!weatherRes.ok || cancelled) return
+          const data = (await weatherRes.json()) as {
+            current?: { temperature_2m?: number; weather_code?: number; relative_humidity_2m?: number; precipitation?: number }
+          }
+          const current = data.current
+          if (!current || current.temperature_2m == null || current.weather_code == null) return
+          const { conditionKey, tipKey } = getWeatherConditionAndTipKeys(current.weather_code)
+          if (!cancelled) {
+            setWeatherData({
+              temp: Math.round(current.temperature_2m),
+              conditionKey,
+              tipKey,
+              code: current.weather_code,
+              locality: locality ?? null,
+            })
+          }
+        } catch {
+          // Keep static fallback
+        } finally {
+          if (!cancelled) setWeatherLoading(false)
+        }
+      },
+      () => setWeatherLoading(false),
+      { enableHighAccuracy: false, timeout: 5000, maximumAge: 300000 }
+    )
+    const fallback = setTimeout(() => setWeatherLoading(false), 6000)
+    return () => {
+      cancelled = true
+      clearTimeout(fallback)
+    }
+  }, [])
 
   // Speech Recognition Setup
   useEffect(() => {
@@ -603,9 +708,9 @@ export default function DiagnosisPage() {
                           <Upload className="w-5 h-5 text-[#2F855A] flex-shrink-0" />
                           {t("evidenceSources")}
                         </CardTitle>
-                        <span className="text-xs font-medium bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 px-2.5 py-0.5 rounded-full w-fit">
+                        {/* <span className="text-xs font-medium bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 px-2.5 py-0.5 rounded-full w-fit">
                           {t("step1")}
-                        </span>
+                        </span> */}
                       </div>
                     </CardHeader>
                     <CardContent className="space-y-4 sm:space-y-6">
@@ -945,11 +1050,16 @@ export default function DiagnosisPage() {
                                   type="button"
                                   variant="outline"
                                   onClick={handleLocationDetect}
-                                  className="sm:-ml-px sm:rounded-none sm:rounded-r-md border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 h-11"
+                                  disabled={isLocating}
+                                  className="sm:-ml-px sm:rounded-none sm:rounded-r-md border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 h-11 disabled:opacity-70"
                                 >
-                                  <Navigation className="w-4 h-4 sm:mr-2" />
-                                  <span className="hidden sm:inline">{t("locateMe")}</span>
-                                  <span className="sm:hidden">{t("locateShort")}</span>
+                                  {isLocating ? (
+                                    <Loader2 className="w-4 h-4 sm:mr-2 animate-spin" />
+                                  ) : (
+                                    <Navigation className="w-4 h-4 sm:mr-2" />
+                                  )}
+                                  <span className="hidden sm:inline">{isLocating ? t("locating") : t("locateMe")}</span>
+                                  <span className="sm:hidden">{isLocating ? t("locatingShort") : t("locateShort")}</span>
                                 </Button>
                               </div>
                               <FormMessage />
@@ -1155,67 +1265,96 @@ export default function DiagnosisPage() {
 
                 {/* Sidebar */}
                 <div className="lg:col-span-1 space-y-6 lg:space-y-8">
-                  {/* Agricultural Tips */}
+                  {/* How to use AI report for best yield */}
                   <Card className="bg-white dark:bg-[#1F2937] rounded-2xl shadow-[0_4px_6px_-1px_rgba(0,0,0,0.05),0_2px_4px_-1px_rgba(0,0,0,0.03)] border border-gray-200 dark:border-gray-700">
                     <CardHeader className="pb-4">
                       <CardTitle className="text-base sm:text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
                         <Lightbulb className="w-5 h-5 text-[#C05621] flex-shrink-0" />
-                        <span className="text-sm sm:text-base">{t("tipsTitle")}: {t(`cropTypes.${cropType}`)}</span>
+                        <span className="text-sm sm:text-base">{t("tipsReportTitle")}</span>
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-3 sm:space-y-4">
                       <div className="flex items-start gap-3 p-3 bg-green-50 dark:bg-green-900/10 rounded-xl border border-green-100 dark:border-green-800/30 hover:shadow-md transition-all cursor-default group">
                         <div className="flex-shrink-0 bg-white dark:bg-gray-800 p-2 rounded-lg shadow-sm group-hover:bg-[#2F855A] transition-colors">
-                          <Scissors className="w-5 h-5 text-[#2F855A] group-hover:text-white" />
+                          <Sparkles className="w-5 h-5 text-[#2F855A] group-hover:text-white" />
                         </div>
                         <div>
-                          <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{t("tip1Title")}</p>
+                          <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{t("reportTip1Title")}</p>
                           <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 leading-snug">
-                            {t("tip1Desc")}
+                            {t("reportTip1Desc")}
                           </p>
                         </div>
                       </div>
 
                       <div className="flex items-start gap-3 p-3 bg-orange-50 dark:bg-orange-900/10 rounded-xl border border-orange-100 dark:border-orange-800/30 hover:shadow-md transition-all cursor-default group">
                         <div className="flex-shrink-0 bg-white dark:bg-gray-800 p-2 rounded-lg shadow-sm group-hover:bg-[#C05621] transition-colors">
-                          <Thermometer className="w-5 h-5 text-[#C05621] group-hover:text-white" />
+                          <Layers className="w-5 h-5 text-[#C05621] group-hover:text-white" />
                         </div>
                         <div>
-                          <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{t("tip2Title")}</p>
+                          <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{t("reportTip2Title")}</p>
                           <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 leading-snug">
-                            {t("tip2Desc")}
+                            {t("reportTip2Desc")}
                           </p>
                         </div>
                       </div>
 
                       <div className="flex items-start gap-3 p-3 bg-blue-50 dark:bg-blue-900/10 rounded-xl border border-blue-100 dark:border-blue-800/30 hover:shadow-md transition-all cursor-default group">
                         <div className="flex-shrink-0 bg-white dark:bg-gray-800 p-2 rounded-lg shadow-sm group-hover:bg-blue-500 transition-colors">
-                          <Droplets className="w-5 h-5 text-blue-500 group-hover:text-white" />
+                          <RefreshCw className="w-5 h-5 text-blue-500 group-hover:text-white" />
                         </div>
                         <div>
-                          <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{t("tip3Title")}</p>
+                          <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{t("reportTip3Title")}</p>
                           <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 leading-snug">
-                            {t("tip3Desc")}
+                            {t("reportTip3Desc")}
                           </p>
                         </div>
                       </div>
                     </CardContent>
                   </Card>
 
-                  {/* Weather Alert */}
+                  {/* Weather Alert - live from Open-Meteo when location available, else static fallback */}
                   <Card className="bg-gradient-to-br from-[#2F855A] to-green-800 rounded-2xl shadow-[0_4px_6px_-1px_rgba(0,0,0,0.05),0_2px_4px_-1px_rgba(0,0,0,0.03)] p-5 sm:p-6 text-white relative overflow-hidden">
-                    <div className="absolute top-0 right-0 -mr-8 -mt-8 w-32 h-32 bg-white opacity-10 rounded-full"></div>
+                    <div className="absolute top-0 right-0 -mr-8 -mt-8 w-32 h-32 bg-white opacity-10 rounded-full" />
                     <h4 className="text-xs sm:text-sm font-medium opacity-90 mb-3">{t("weatherAlertTitle")}</h4>
-                    <div className="flex items-center gap-3 mb-3">
-                      <CloudRain className="w-8 h-8 sm:w-10 sm:h-10 flex-shrink-0" />
-                      <div>
-                        <p className="text-lg sm:text-xl font-bold">{t("weatherAlertType")}</p>
-                        <p className="text-xs opacity-80">{t("weatherAlertTime")}</p>
+                    {weatherLoading ? (
+                      <div className="flex items-center gap-3">
+                        <Loader2 className="w-8 h-8 sm:w-10 sm:h-10 flex-shrink-0 animate-spin opacity-90" />
+                        <p className="text-sm opacity-90">{t("weatherLoading")}</p>
                       </div>
-                    </div>
-                    <p className="text-xs sm:text-sm opacity-90 leading-relaxed">
-                      {t("weatherAlertDesc")}
-                    </p>
+                    ) : weatherData ? (
+                      <>
+                        {weatherData.locality && (
+                          <p className="text-xs opacity-85 mb-2 font-medium">{t("weatherFor")} {weatherData.locality}</p>
+                        )}
+                        <div className="flex items-center gap-3 mb-3">
+                          {weatherData.code >= 51 && weatherData.code <= 86 ? (
+                            <CloudRain className="w-8 h-8 sm:w-10 sm:h-10 flex-shrink-0" />
+                          ) : weatherData.code >= 1 && weatherData.code <= 3 ? (
+                            <Cloud className="w-8 h-8 sm:w-10 sm:h-10 flex-shrink-0" />
+                          ) : (
+                            <Sun className="w-8 h-8 sm:w-10 sm:h-10 flex-shrink-0" />
+                          )}
+                          <div>
+                            <p className="text-lg sm:text-xl font-bold">{t(weatherData.conditionKey)}</p>
+                            <p className="text-xs opacity-80">{weatherData.temp}°C</p>
+                          </div>
+                        </div>
+                        <p className="text-xs sm:text-sm opacity-90 leading-relaxed">{t(weatherData.tipKey)}</p>
+                      </>
+                    ) : (
+                      <>
+                        <div className="flex items-center gap-3 mb-3">
+                          <CloudRain className="w-8 h-8 sm:w-10 sm:h-10 flex-shrink-0" />
+                          <div>
+                            <p className="text-lg sm:text-xl font-bold">{t("weatherAlertType")}</p>
+                            <p className="text-xs opacity-80">{t("weatherAlertTime")}</p>
+                          </div>
+                        </div>
+                        <p className="text-xs sm:text-sm opacity-90 leading-relaxed">
+                          {t("weatherAlertDesc")}
+                        </p>
+                      </>
+                    )}
                   </Card>
                 </div>
               </div>

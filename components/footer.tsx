@@ -110,10 +110,10 @@ export default function Footer() {
         <div className="pt-10 border-t border-gray-200 flex flex-col md:flex-row justify-between items-center gap-4 text-sm text-[#4B634B]">
           <p>© {currentYear} AgroAI. {t("copyright")}</p>
           <div className="flex gap-8">
-            <Link href="#" className="hover:text-[#2E7D32] transition-colors">
+            <Link href="/privacy" className="hover:text-[#2E7D32] transition-colors">
               {t("privacy")}
             </Link>
-            <Link href="#" className="hover:text-[#2E7D32] transition-colors">
+            <Link href="/terms" className="hover:text-[#2E7D32] transition-colors">
               {t("terms")}
             </Link>
           </div>
