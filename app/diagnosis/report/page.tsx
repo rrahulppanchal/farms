@@ -1151,10 +1151,10 @@ export default function DiagnosisReportPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                <Button className="w-full bg-[#2E7D32] hover:bg-[#1B5E20] text-white py-3 px-4 rounded-xl font-medium transition-colors shadow-md">
+                {/* <Button className="w-full bg-[#2E7D32] hover:bg-[#1B5E20] text-white py-3 px-4 rounded-xl font-medium transition-colors shadow-md">
                   <Share2 className="w-4 h-4 mr-2" />
                   {t("shareReport")}
-                </Button>
+                </Button> */}
                 <Button
                   variant="outline"
                   onClick={downloadPDF}
