@@ -202,7 +202,9 @@
     "reportActions": "প্ৰতিবেদন কাৰ্য্য",
     "generatingPdf": "PDF তৈয়াৰ হৈ আছে...",
     "showingCropImages": "{total} শস্য ছবিৰ ভিতৰত {shown} দেখুৱাইছে",
-    "moreCropImages": "+{n} অধিক"
+    "moreCropImages": "+{n} অধিক",
+    "analysisErrorTitle": "বিশ্লেষণ ত্ৰুটি (অজ্ঞাত)",
+    "analysisErrorDescription": "বিশ্লেষণ পাৰ্ছ কৰিব পৰা নগ’ল। অনুগ্ৰহ কৰি বেলেগ ছবিৰ সৈতে পুনৰ চেষ্টা কৰক বা পিছত পুনৰ চেষ্টা কৰক।"
   },
   "footer": {
     "tagline": "পৰবৰ্তী প্ৰজন্মৰ AI-চালিত কৃষিৰে বিশ্বজুৰি খেতিয়কসকলক সক্ষম কৰা। সদায় বিনামূলীয়া।",

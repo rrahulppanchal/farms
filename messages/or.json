@@ -202,7 +202,9 @@
     "reportActions": "ରିପୋର୍ଟ କାର୍ଯ୍ୟ",
     "generatingPdf": "PDF ଜେନେରେଟ୍ ହେଉଛି...",
     "showingCropImages": "{total} ଫସଲ ଚିତ୍ର ମଧ୍ୟରୁ {shown} ଦେଖାଉଛି",
-    "moreCropImages": "+{n} ଅଧିକ"
+    "moreCropImages": "+{n} ଅଧିକ",
+    "analysisErrorTitle": "ବିଶ୍ଳେଷଣ ତ୍ରୁଟି (ଅଜ୍ଞାତ)",
+    "analysisErrorDescription": "ବିଶ୍ଳେଷଣ ପାର୍ସ କରି ହେଲା ନାହିଁ। ଦୟାକରି ଭିନ୍ନ ଛବ ସହିତ ପୁନର୍ବାର ଚେଷ୍ଟା କରନ୍ତୁ କିମ୍ବା ପରେ ପୁନର୍ବାର ଚେଷ୍ଟା କରନ୍ତୁ।"
   },
   "footer": {
     "tagline": "ପରବର୍ତ୍ତୀ ପିଢ଼ିର AI-ଚାଳିତ କୃଷି ଦ୍ୱାରା ବିଶ୍ୱବ୍ୟାପୀ କୃଷକଙ୍କୁ ସଶକ୍ତ କରିବା। ସର୍ବଦା ମାଗଣା।",

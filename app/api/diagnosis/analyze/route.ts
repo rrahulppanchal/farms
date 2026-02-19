@@ -143,6 +143,11 @@ CRITICAL LANGUAGE REQUIREMENT:
 ${languageInstruction}
 The ENTIRE JSON response (all field values: diseaseName, description, impact text, treatment titles and descriptions, recommendations, etc.) MUST be in that language and script. No English in the response unless the language is English.
 
+CRITICAL JSON FORMAT (required for all languages):
+- Return ONLY valid JSON. Do not add any text, prefix (e.g. "json"), or markdown before or after the JSON.
+- Use standard ASCII for all JSON keys exactly as shown (diagnosis, diseaseName, description, etc.). Only the values may be in the requested language/script.
+- This ensures the response can be parsed correctly regardless of language.
+
 CRITICAL LOCATION REQUIREMENT:
 The location "${location}" is the PRIMARY factor for your analysis. ALL recommendations, treatment plans, and environmental assessments MUST be specific to this location. Consider:
 - Regional climate patterns and typical weather conditions for this location
@@ -258,7 +263,9 @@ CRITICAL REQUIREMENTS:
    - Base your analysis on the actual images provided
    - Be realistic about timelines and expected outcomes
    - If multiple issues are detected, prioritize the most critical
-   - Return ONLY valid JSON, no additional text before or after
+   - Keep the response concise: descriptions should be 1-2 sentences each
+   - Keep treatment actions brief and practical (max 2 immediate, 2 follow-up, 2 prevention items)
+   - Return ONLY valid JSON, no additional text before or after. No "json" prefix or code fences.
 
 Now analyze the images and provide the diagnosis report in the exact JSON format specified above, ensuring ALL recommendations are specific to "${location}".`
 
@@ -287,7 +294,8 @@ Now analyze the images and provide the diagnosis report in the exact JSON format
             temperature: 0.4,
             topK: 40,
             topP: 0.95,
-            maxOutputTokens: 4096,
+            maxOutputTokens: 8192,
+            responseMimeType: "application/json",
           },
         }),
       }
@@ -309,27 +317,108 @@ Now analyze the images and provide the diagnosis report in the exact JSON format
       data.candidates?.[0]?.content?.parts?.[0]?.text ||
       "I apologize, but I couldn't generate a response. Please try again."
 
-    // Try to parse JSON from the response
+    // Parse helpers
+    const extractJsonText = (raw: string): string => {
+      let toParse = (raw || "").trim()
+      while (toParse.startsWith('"')) {
+        toParse = toParse.slice(1).trim()
+      }
+      if (toParse.toLowerCase().startsWith("json ")) {
+        toParse = toParse.slice(5).trim()
+      }
+      const codeFenceMatch = toParse.match(/^```(?:json)?\s*([\s\S]*?)```/i)
+      if (codeFenceMatch) {
+        toParse = codeFenceMatch[1].trim()
+      }
+      const jsonMatch = toParse.match(/\{[\s\S]*\}/)
+      if (!jsonMatch) {
+        throw new Error("No JSON found in model response")
+      }
+      return jsonMatch[0]
+    }
+
+    const parseAnalysis = (raw: string) => {
+      const parsed = JSON.parse(extractJsonText(raw))
+      if (parsed?.diagnosis && typeof parsed.diagnosis === "object") {
+        return parsed
+      }
+      if (parsed?.diagnosis && typeof parsed.diagnosis === "string") {
+        try {
+          const inner = JSON.parse(parsed.diagnosis)
+          return inner && typeof inner.diagnosis === "object" ? inner : parsed
+        } catch {
+          return parsed
+        }
+      }
+      return parsed
+    }
+
+    // Try to parse JSON from the response, with one repair attempt if malformed/truncated
     let analysisResult
     try {
-      // Extract JSON from response (handle cases where there might be extra text)
-      const jsonMatch = responseText.match(/\{[\s\S]*\}/)
-      if (jsonMatch) {
-        analysisResult = JSON.parse(jsonMatch[0])
-      } else {
-        throw new Error("No JSON found in response")
-      }
+      analysisResult = parseAnalysis(responseText)
     } catch (parseError) {
       console.error("Error parsing Gemini response:", parseError)
       console.error("Response text:", responseText)
-      
-      // Fallback: create a structured response from the text
-      analysisResult = {
+
+      try {
+        const repairPrompt = `You are a strict JSON repair assistant.
+Fix the following malformed or truncated crop diagnosis JSON and return ONLY valid JSON matching this shape:
+{
+  "diagnosis": {"diseaseName": string, "severity": "Low"|"Moderate"|"High"|"Critical", "confidence": number, "description": string, "scientificName": string},
+  "environmentalFactors": {"humidity": {"value": string, "riskLevel": "LOW"|"MODERATE"|"HIGH", "impact": string}, "temperature": {"value": string, "riskLevel": "LOW"|"MODERATE"|"HIGH", "impact": string}, "overallRisk": number},
+  "impact": {"yieldLoss": string, "timeframe": string, "description": string},
+  "treatmentPlan": {"immediate": Array, "followUp": Array, "prevention": Array},
+  "recommendations": {"pruning": string, "watering": string, "fertilization": string, "monitoring": string}
+}
+Rules:
+- Preserve the original language for textual values.
+- Keep the values concise (1-2 sentences per description).
+- If part is missing, fill with best-effort sensible placeholders.
+- Keep enum fields strictly in allowed English values.
+
+Malformed JSON:
+${responseText}`
+
+        const repairResponse = await fetch(
+          "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-goog-api-key": apiKey,
+            },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: repairPrompt }] }],
+              generationConfig: {
+                temperature: 0.1,
+                topK: 20,
+                topP: 0.9,
+                maxOutputTokens: 4096,
+                responseMimeType: "application/json",
+              },
+            }),
+          }
+        )
+
+        if (repairResponse.ok) {
+          const repairData = await repairResponse.json()
+          const repairedText =
+            repairData.candidates?.[0]?.content?.parts?.[0]?.text || ""
+          analysisResult = parseAnalysis(repairedText)
+        } else {
+          throw new Error("Repair API call failed")
+        }
+      } catch (repairError) {
+        console.error("Error repairing malformed diagnosis JSON:", repairError)
+
+        // Fallback: do not put raw response (often JSON) into description
+        analysisResult = {
         diagnosis: {
           diseaseName: "Analysis Error",
           severity: "Moderate",
           confidence: 50,
-          description: responseText.substring(0, 500),
+          description: "The analysis could not be parsed. Please try again with different images or try again later.",
           scientificName: "Unknown",
         },
         environmentalFactors: {
@@ -361,6 +450,7 @@ Now analyze the images and provide the diagnosis report in the exact JSON format
           fertilization: "Please consult with an agricultural expert.",
           monitoring: "Please consult with an agricultural expert.",
         },
+      }
       }
     }
 

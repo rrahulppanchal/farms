@@ -213,7 +213,9 @@
     "reportActions": "রিপোর্ট ক্রিয়া",
     "generatingPdf": "PDF তৈরি হচ্ছে...",
     "showingCropImages": "{total} ফসলের ছবির মধ্যে {shown} দেখানো হচ্ছে",
-    "moreCropImages": "+{n} আরও"
+    "moreCropImages": "+{n} আরও",
+    "analysisErrorTitle": "বিশ্লেষণ ত্রুটি (অজানা)",
+    "analysisErrorDescription": "বিশ্লেষণ পার্স করা যায়নি। বিভিন্ন ছবি দিয়ে আবার চেষ্টা করুন বা পরে আবার চেষ্টা করুন।"
   },
   "footer": {
     "tagline": "আগামী প্রজন্মের AI-চালিত কৃষি দিয়ে বিশ্বজুড়ে কৃষকদের সক্ষম করা। চিরকাল বিনামূল্যে।",

@@ -202,7 +202,9 @@
     "reportActions": "રિપોર્ટ ક્રિયાઓ",
     "generatingPdf": "PDF જનરેટ થઈ રહ્યું છે...",
     "showingCropImages": "{total} પાક ચિત્રોમાંથી {shown} દર્શાવી રહ્યું છે",
-    "moreCropImages": "+{n} વધુ"
+    "moreCropImages": "+{n} વધુ",
+    "analysisErrorTitle": "વિશ્લેષણ ભૂલ (અજ્ઞાત)",
+    "analysisErrorDescription": "વિશ્લેષણ પાર્સ થઈ શક્યું નહીં. કૃપા કરીને વિવિધ ચિત્રો સાથે ફરી પ્રયાસ કરો અથવા પછી ફરી પ્રયાસ કરો."
   },
   "footer": {
     "tagline": "આગામી પેઢીની AI-ચાલિત ચોકસાઈ ખેતી સાથે વિશ્વભર ખેડૂતોને સશક્ત બનાવવું. કાયમ મફત.",

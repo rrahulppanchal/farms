@@ -268,7 +268,9 @@
     "reportActions": "Report Actions",
     "generatingPdf": "Generating PDF...",
     "showingCropImages": "Showing {shown} of {total} crop images",
-    "moreCropImages": "+{n} more"
+    "moreCropImages": "+{n} more",
+    "analysisErrorTitle": "Analysis Error (Unknown)",
+    "analysisErrorDescription": "The analysis could not be parsed. Please try again with different images or try again later."
   },
   "footer": {
     "tagline": "Empowering farmers globally with the next generation of AI-driven precision agriculture. Free, forever.",

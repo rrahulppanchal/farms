@@ -202,7 +202,9 @@
     "reportActions": "अहवाल क्रिया",
     "generatingPdf": "PDF तयार होत आहे...",
     "showingCropImages": "{total} पीक प्रतिमांपैकी {shown} दाखवत आहे",
-    "moreCropImages": "+{n} अधिक"
+    "moreCropImages": "+{n} अधिक",
+    "analysisErrorTitle": "विश्लेषण त्रुटी (अज्ञात)",
+    "analysisErrorDescription": "विश्लेषण पार्स करता आले नाही. कृपया वेगवेगळ्या चित्रांसह पुन्हा प्रयत्न करा किंवा नंतर पुन्हा प्रयत्न करा."
   },
   "footer": {
     "tagline": "पुढच्या पिढीच्या AI-चालित अग्रिम शेतीद्वारे जगभर शेतकऱ्यांना सक्षम करणे. कायमचे मोफत.",

@@ -268,7 +268,9 @@
     "reportActions": "रिपोर्ट क्रियाएँ",
     "generatingPdf": "PDF बन रहा है...",
     "showingCropImages": "{total} फसल छवियों में से {shown} दिख रही हैं",
-    "moreCropImages": "+{n} और"
+    "moreCropImages": "+{n} और",
+    "analysisErrorTitle": "विश्लेषण त्रुटि (अज्ञात)",
+    "analysisErrorDescription": "विश्लेषण पार्स नहीं हो सका। कृपया भिन्न छवियों के साथ पुनः प्रयास करें या बाद में पुनः प्रयास करें।"
   },
   "footer": {
     "tagline": "अगली पीढ़ी की AI-संचालित सटीक कृषि के साथ दुनिया भर के किसानों को सशक्त बनाना। हमेशा मुफ्त।",

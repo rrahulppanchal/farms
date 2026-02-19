@@ -202,7 +202,9 @@
     "reportActions": "رپورٹ کے اقدامات",
     "generatingPdf": "PDF بن رہی ہے...",
     "showingCropImages": "{total} فصل کی تصاویر میں سے {shown} دکھا رہا ہے",
-    "moreCropImages": "+{n} مزید"
+    "moreCropImages": "+{n} مزید",
+    "analysisErrorTitle": "تجزیہ کی خرابی (نامعلوم)",
+    "analysisErrorDescription": "تجزیہ پارس نہیں ہو سکا۔ براہ کرم مختلف تصاویر کے ساتھ دوبارہ کوشش کریں یا بعد میں دوبارہ کوشش کریں۔"
   },
   "footer": {
     "tagline": "اگلی نسل کی AI سے چلنے والی زراعت کے ساتھ دنیا بھر کے کسانوں کو بااختیار بنانا۔ ہمیشہ مفت۔",

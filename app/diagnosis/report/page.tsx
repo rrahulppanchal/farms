@@ -126,7 +126,7 @@ export default function DiagnosisReportPage() {
   const [filter, setFilter] = useState("all")
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [isLoading, setIsLoading] = useState(false)
-  const [isChatExpanded, setIsChatExpanded] = useState(true)
+  const [isChatExpanded, setIsChatExpanded] = useState(false)
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false)
 
   // Convert markdown-style formatting to HTML
@@ -473,20 +473,79 @@ export default function DiagnosisReportPage() {
     }
   }
 
+  // Normalize report: if diagnosis.description is raw JSON (e.g. from parse failure), parse and extract real diagnosis
+  const normalizeReport = (report: DiagnosisReport): DiagnosisReport => {
+    const desc = report?.analysis?.diagnosis?.description
+    if (typeof desc !== "string" || desc.length < 20) return report
+    const trimmed = desc.trim()
+    const firstBrace = trimmed.indexOf("{")
+    if (firstBrace === -1) return report
+    try {
+      const jsonStr = trimmed.slice(firstBrace)
+      const parsed = JSON.parse(jsonStr)
+      const diagnosis = parsed?.diagnosis ?? parsed
+      if (diagnosis && typeof diagnosis === "object") {
+        return {
+          ...report,
+          analysis: {
+            ...report.analysis,
+            diagnosis: {
+              diseaseName: diagnosis.diseaseName ?? report.analysis.diagnosis.diseaseName,
+              severity: diagnosis.severity ?? report.analysis.diagnosis.severity,
+              confidence: diagnosis.confidence ?? report.analysis.diagnosis.confidence,
+              description: typeof diagnosis.description === "string" ? diagnosis.description : report.analysis.diagnosis.description,
+              scientificName: diagnosis.scientificName ?? report.analysis.diagnosis.scientificName,
+            },
+          },
+        }
+      }
+    } catch {
+      // Parse failed (e.g. truncated JSON). Try to extract diseaseName and description with regex so we don't show raw JSON.
+      const diseaseNameMatch = trimmed.match(/"diseaseName"\s*:\s*"([^"]*)"/)
+      const descriptionMatch = trimmed.match(/"description"\s*:\s*"((?:[^"\\]|\\.)*)"/)
+      if (diseaseNameMatch || descriptionMatch) {
+        return {
+          ...report,
+          analysis: {
+            ...report.analysis,
+            diagnosis: {
+              ...report.analysis.diagnosis,
+              diseaseName: diseaseNameMatch ? diseaseNameMatch[1] : report.analysis.diagnosis.diseaseName,
+              description: descriptionMatch ? descriptionMatch[1].replace(/\\./g, (m) => (m === '\\n' ? '\n' : m === '\\"' ? '"' : m)) : "The analysis could not be fully displayed. Please run diagnosis again for a complete report.",
+            },
+          },
+        }
+      }
+      // Description looks like JSON but we couldn't parse or extract; hide raw JSON
+      return {
+        ...report,
+        analysis: {
+          ...report.analysis,
+          diagnosis: {
+            ...report.analysis.diagnosis,
+            description: "The analysis could not be displayed. Please run diagnosis again for a complete report.",
+          },
+        },
+      }
+    }
+    return report
+  }
+
   // Load report data from sessionStorage
   useEffect(() => {
     const reportData = sessionStorage.getItem("diagnosisReport")
     if (reportData) {
       try {
         const parsed = JSON.parse(reportData)
-        setReport(parsed)
+        const normalized = normalizeReport(parsed)
+        setReport(normalized)
         // Initialize chat with greeting (localized)
         setMessages([
           {
             id: "1",
             text: t("chatGreeting", {
-              diseaseName: parsed.analysis.diagnosis.diseaseName,
-              cropType: parsed.cropInfo.cropType,
+              diseaseName: normalized.analysis.diagnosis.diseaseName,
+              cropType: normalized.cropInfo.cropType,
             }),
             sender: "ai",
             timestamp: new Date().toLocaleTimeString(locale || "en", {
@@ -730,6 +789,22 @@ export default function DiagnosisReportPage() {
   const filteredPrevention = report.analysis.treatmentPlan.prevention.filter(
     (item) => filter === "all" || item.type === filter
   )
+  const isAnalysisError =
+    report.analysis.diagnosis.diseaseName === "Analysis Error" ||
+    report.analysis.diagnosis.description?.startsWith("The analysis could not be parsed")
+  const diagnosisTitle = isAnalysisError ? t("analysisErrorTitle") : report.analysis.diagnosis.diseaseName
+  const diagnosisDescription = isAnalysisError ? t("analysisErrorDescription") : report.analysis.diagnosis.description
+  const displaySeverity = isAnalysisError ? t("riskModerate") : report.analysis.diagnosis.severity
+  const displayHumidityValue = report.analysis.environmentalFactors.humidity.value === "Unknown"
+    ? "--"
+    : report.analysis.environmentalFactors.humidity.value
+  const displayTemperatureValue = report.analysis.environmentalFactors.temperature.value === "Unknown"
+    ? "--"
+    : report.analysis.environmentalFactors.temperature.value
+  const displayImpactDescription =
+    isAnalysisError || report.analysis.impact.description === "Unable to assess impact"
+      ? t("analysisErrorDescription")
+      : report.analysis.impact.description
 
   return (
     <div className="min-h-screen bg-[#F0FDF4] dark:bg-[#0f172a] text-gray-900 dark:text-gray-100 transition-colors duration-300">
@@ -783,7 +858,7 @@ export default function DiagnosisReportPage() {
             <div className="flex-grow">
               <div className="flex items-center gap-3 mb-2">
                 <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold border ${getSeverityColor(report.analysis.diagnosis.severity)}`}>
-                  {report.analysis.diagnosis.severity}
+                  {displaySeverity}
                 </span>
                 <span className="text-sm text-gray-600 dark:text-gray-400 flex items-center gap-1">
                   <Calendar className="w-4 h-4" />
@@ -791,15 +866,15 @@ export default function DiagnosisReportPage() {
                 </span>
               </div>
               <h1 className="font-[family-name:var(--font-merriweather)] text-3xl md:text-4xl text-gray-900 dark:text-white font-bold mb-2">
-                {report.analysis.diagnosis.diseaseName}
-                {report.analysis.diagnosis.scientificName && (
+                {diagnosisTitle}
+                {report.analysis.diagnosis.scientificName && !isAnalysisError && (
                   <span className="text-lg font-normal text-gray-500 dark:text-gray-400 ml-2">
                     ({report.analysis.diagnosis.scientificName})
                   </span>
                 )}
               </h1>
               <p className="text-gray-600 dark:text-gray-400 max-w-2xl">
-                {report.analysis.diagnosis.description}
+                {diagnosisDescription}
               </p>
             </div>
             <div className="flex-shrink-0 flex flex-col items-end">
@@ -917,7 +992,7 @@ export default function DiagnosisReportPage() {
                           </div>
                           <div>
                             <div className="text-sm font-medium text-gray-900 dark:text-white">{t("humidity")}</div>
-                            <div className="text-xs text-gray-600 dark:text-gray-400">{report.analysis.environmentalFactors.humidity.value}</div>
+                            <div className="text-xs text-gray-600 dark:text-gray-400">{displayHumidityValue}</div>
                           </div>
                         </div>
                         <span className={`text-xs font-bold px-2 py-1 rounded ${getRiskColor(report.analysis.environmentalFactors.humidity.riskLevel)}`}>
@@ -931,7 +1006,7 @@ export default function DiagnosisReportPage() {
                           </div>
                           <div>
                             <div className="text-sm font-medium text-gray-900 dark:text-white">{t("temperature")}</div>
-                            <div className="text-xs text-gray-600 dark:text-gray-400">{report.analysis.environmentalFactors.temperature.value}</div>
+                            <div className="text-xs text-gray-600 dark:text-gray-400">{displayTemperatureValue}</div>
                           </div>
                         </div>
                         <span className={`text-xs font-bold px-2 py-1 rounded ${getRiskColor(report.analysis.environmentalFactors.temperature.riskLevel)}`}>
@@ -945,7 +1020,7 @@ export default function DiagnosisReportPage() {
                       {t("potentialImpact")}
                     </h3>
                     <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed mb-4">
-                      {report.analysis.impact.description}
+                      {displayImpactDescription}
                     </p>
                     <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5 mb-1">
                       <div 

@@ -202,7 +202,9 @@
     "reportActions": "ਰਿਪੋਰਟ ਕਾਰਵਾਈਆਂ",
     "generatingPdf": "PDF ਜਨਰੇਟ ਹੋ ਰਹੀ ਹੈ...",
     "showingCropImages": "{total} ਫਸਲ ਤਸਵੀਰਾਂ ਵਿੱਚੋਂ {shown} ਦਿਖਾ ਰਿਹਾ ਹੈ",
-    "moreCropImages": "+{n} ਹੋਰ"
+    "moreCropImages": "+{n} ਹੋਰ",
+    "analysisErrorTitle": "ਵਿਸ਼ਲੇਸ਼ਣ ਗਲਤੀ (ਅਣਜਾਣ)",
+    "analysisErrorDescription": "ਵਿਸ਼ਲੇਸ਼ਣ ਪਾਰਸ ਨਹੀਂ ਕੀਤਾ ਜਾ ਸਕਿਆ। ਕਿਰਪਾ ਕਰਕੇ ਵੱਖ-ਵੱਖ ਤਸਵੀਰਾਂ ਨਾਲ ਦੁਬਾਰਾ ਕੋਸ਼ਿਸ਼ ਕਰੋ ਜਾਂ ਬਾਅਦ ਵਿੱਚ ਦੁਬਾਰਾ ਕੋਸ਼ਿਸ਼ ਕਰੋ।"
   },
   "footer": {
     "tagline": "ਅਗਲੀ ਪੀੜ੍ਹੀ ਦੀ AI-ਚਾਲਿਤ ਖੇਤੀ ਨਾਲ ਦੁਨੀਆ ਭਰ ਦੇ ਕਿਸਾਨਾਂ ਨੂੰ ਸਸ਼ਕਤ ਕਰਨਾ। ਹਮੇਸ਼ਾ ਮੁਫ਼ਤ।",
