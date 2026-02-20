@@ -178,6 +178,8 @@ const CROP_TYPE_VALUES = ["Tomato", "Potato", "Corn (Maize)", "Wheat", "Rice", "
 const GROWTH_STAGE_VALUES = ["Germination", "Seedling", "Vegetative", "Flowering", "Fruiting", "Maturation", "Harvest", "Post-Harvest", "Other"] as const
 const SOIL_CONDITION_VALUES = ["Well-drained", "Clay", "Sandy", "Loamy", "Silty", "Waterlogged", "Dry", "Other"] as const
 const WEATHER_CONDITION_VALUES = ["Sunny", "Cloudy", "Rainy", "Humid", "Dry", "Windy", "Frost", "Drought", "Other"] as const
+const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024
+const SUPPORTED_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp"])
 
 export default function DiagnosisPage() {
   const router = useRouter()
@@ -226,27 +228,94 @@ export default function DiagnosisPage() {
   const weatherCondition = form.watch("weatherCondition")
   const description = form.watch("description")
 
+  const optimizeImageForUpload = async (file: File): Promise<File> => {
+    if (!file.type.startsWith("image/")) {
+      throw new Error(`File ${file.name} is not a valid image`)
+    }
+
+    // HEIC/HEIF is common on phones and often fails in downstream AI APIs.
+    if (!SUPPORTED_IMAGE_MIME_TYPES.has(file.type.toLowerCase())) {
+      throw new Error(
+        `File ${file.name} is not supported. Please upload JPG, PNG, or WEBP images from your device camera/gallery settings.`
+      )
+    }
+
+    if (file.size <= MAX_IMAGE_SIZE_BYTES) return file
+
+    // Compress large mobile photos client-side so upload works on small devices.
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(reader.result as string)
+      reader.onerror = reject
+      reader.readAsDataURL(file)
+    })
+
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const image = new window.Image()
+      image.onload = () => resolve(image)
+      image.onerror = reject
+      image.src = dataUrl
+    })
+
+    const canvas = document.createElement("canvas")
+    let width = img.width
+    let height = img.height
+    const maxDim = 1920
+    if (width > maxDim || height > maxDim) {
+      const ratio = Math.min(maxDim / width, maxDim / height)
+      width = Math.round(width * ratio)
+      height = Math.round(height * ratio)
+    }
+
+    canvas.width = width
+    canvas.height = height
+    const ctx = canvas.getContext("2d")
+    if (!ctx) throw new Error("Unable to process image")
+    ctx.drawImage(img, 0, 0, width, height)
+
+    let quality = 0.9
+    let blob: Blob | null = null
+    while (quality >= 0.4) {
+      blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", quality))
+      if (blob && blob.size <= MAX_IMAGE_SIZE_BYTES) break
+      quality -= 0.1
+    }
+
+    if (!blob) {
+      throw new Error(`Failed to optimize ${file.name}. Please try a different image.`)
+    }
+
+    const safeName = file.name.replace(/\.[^/.]+$/, "") || "image"
+    return new File([blob], `${safeName}.jpg`, { type: "image/jpeg" })
+  }
+
   // Handle image upload and preview
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
     if (!files || files.length === 0) return
 
     const fileArray = Array.from(files)
-    const imageFiles = fileArray.filter((file) => file.type.startsWith("image/"))
-
-    // Validate file sizes
-    const validFiles = imageFiles.filter((file) => {
-      if (file.size > 10 * 1024 * 1024) {
-        form.setError("cropImages", {
-          type: "manual",
-          message: `File ${file.name} exceeds 10MB limit`,
-        })
-        return false
+    const optimizedResults = await Promise.allSettled(fileArray.map((file) => optimizeImageForUpload(file)))
+    const validFiles: File[] = []
+    const errors: string[] = []
+    optimizedResults.forEach((result) => {
+      if (result.status === "fulfilled") {
+        validFiles.push(result.value)
+      } else {
+        errors.push(result.reason instanceof Error ? result.reason.message : "Invalid image file")
       }
-      return true
     })
 
-    if (validFiles.length === 0) return
+    if (errors.length > 0) {
+      form.setError("cropImages", {
+        type: "manual",
+        message: errors[0],
+      })
+    }
+    if (validFiles.length === 0) {
+      e.target.value = ""
+      return
+    }
 
     // Create preview URLs
     const newPreviews = validFiles.map((file) => URL.createObjectURL(file))
@@ -258,6 +327,7 @@ export default function DiagnosisPage() {
       shouldValidate: true,
       shouldDirty: true,
     })
+    e.target.value = ""
   }
 
   const handleImageRemove = (index: number) => {
@@ -276,58 +346,63 @@ export default function DiagnosisPage() {
     setImagePreviews((prev) => prev.filter((_, i) => i !== index))
   }
 
-  const handleSoilReportUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleSoilReportUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
 
-    if (file.size > 10 * 1024 * 1024) {
-      form.setError("soilReport", {
-        type: "manual",
-        message: "File exceeds 10MB limit",
-      })
+    const processedFile =
+      file.type.startsWith("image/")
+        ? await optimizeImageForUpload(file).catch((error: unknown) => {
+            form.setError("soilReport", {
+              type: "manual",
+              message: error instanceof Error ? error.message : "Invalid file",
+            })
+            return null
+          })
+        : file
+    if (!processedFile) {
+      e.target.value = ""
       return
     }
 
-    form.setValue("soilReport", file, {
+    form.setValue("soilReport", processedFile, {
       shouldValidate: true,
       shouldDirty: true,
     })
 
-    if (file.type.startsWith("image/")) {
-      const preview = URL.createObjectURL(file)
+    if (processedFile.type.startsWith("image/")) {
+      const preview = URL.createObjectURL(processedFile)
       setSoilReportPreview(preview)
     } else {
       setSoilReportPreview(null)
     }
+    e.target.value = ""
   }
 
-  const handleWeatherImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleWeatherImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
 
-    if (!file.type.startsWith("image/")) {
+    const processedFile = await optimizeImageForUpload(file).catch((error: unknown) => {
       form.setError("weatherImage", {
         type: "manual",
-        message: "File must be an image",
+        message: error instanceof Error ? error.message : "File must be an image",
       })
+      return null
+    })
+    if (!processedFile) {
+      e.target.value = ""
       return
     }
 
-    if (file.size > 10 * 1024 * 1024) {
-      form.setError("weatherImage", {
-        type: "manual",
-        message: "File exceeds 10MB limit",
-      })
-      return
-    }
-
-    form.setValue("weatherImage", file, {
+    form.setValue("weatherImage", processedFile, {
       shouldValidate: true,
       shouldDirty: true,
     })
 
-    const preview = URL.createObjectURL(file)
+    const preview = URL.createObjectURL(processedFile)
     setWeatherImagePreview(preview)
+    e.target.value = ""
   }
 
   // Reverse geocode using OpenStreetMap Nominatim (free, no API key)
@@ -746,6 +821,7 @@ export default function DiagnosisPage() {
                                       type="file"
                                       multiple
                                       accept="image/*"
+                                      capture="environment"
                                       onChange={handleImageUpload}
                                       className="hidden"
                                     />
@@ -764,7 +840,7 @@ export default function DiagnosisPage() {
                                         />
                                         <button
                                           onClick={() => handleImageRemove(index)}
-                                          className="absolute -top-1.5 -right-1.5 bg-red-500 text-white rounded-full p-0.5 shadow-sm hover:bg-red-600 focus:outline-none transition-colors"
+                                          className="absolute top-1 right-1 z-10 bg-red-500 text-white rounded-full p-1 border-2 border-white dark:border-gray-900 shadow-sm hover:bg-red-600 focus:outline-none transition-colors"
                                           type="button"
                                           aria-label={t("removeImage")}
                                         >
@@ -864,6 +940,7 @@ export default function DiagnosisPage() {
                                     <input
                                       type="file"
                                       accept="image/*"
+                                      capture="environment"
                                       onChange={handleWeatherImageUpload}
                                       className="hidden"
                                     />
