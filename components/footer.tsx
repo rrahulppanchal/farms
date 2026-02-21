@@ -1,10 +1,11 @@
 "use client"
 
 import Link from "next/link"
+import Image from "next/image"
 import { useTranslations } from "next-intl"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Leaf, Share2, Globe } from "lucide-react"
+import { Share2, Globe } from "lucide-react"
 
 export default function Footer() {
   const t = useTranslations("footer")
@@ -15,9 +16,14 @@ export default function Footer() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-12 mb-16">
           <div className="col-span-1 md:col-span-1">
-            <div className="flex items-center gap-2 mb-6">
-              <Leaf className="w-8 h-8 text-[#2E7D32]" />
-              <span className="font-[family-name:var(--font-merriweather)] font-bold text-2xl text-[#1A2E1A]">AgroAI</span>
+            <div className="mb-6">
+              <Image
+                src="/logo.png"
+                alt="AgroAI logo"
+                width={980}
+                height={278}
+                className="h-8 sm:h-10 md:h-16 w-auto object-contain"
+              />
             </div>
             <p className="text-[#4B634B] text-sm leading-relaxed mb-6">
               {t("tagline")}

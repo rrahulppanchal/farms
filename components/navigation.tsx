@@ -1,12 +1,13 @@
 "use client"
 
 import Link from "next/link"
+import Image from "next/image"
 import { useRouter, usePathname } from "next/navigation"
 import { useLocale } from "next-intl"
 import { useTranslations } from "next-intl"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Leaf, Globe } from "lucide-react"
+import { Globe } from "lucide-react"
 import { INDIAN_LOCALES } from "@/lib/i18n-locales"
 
 const LOCALE_COOKIE = "NEXT_LOCALE"
@@ -32,9 +33,15 @@ export default function Navigation() {
       <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
         <div className="flex justify-between h-14 sm:h-16 md:h-20 items-center gap-2 min-h-0">
           <div className="flex items-center gap-4 sm:gap-10 min-w-0 flex-1">
-            <Link href="/" className="flex items-center gap-1.5 sm:gap-2 cursor-pointer min-w-0 shrink-0">
-              <Leaf className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-[#2E7D32] shrink-0" />
-              <span className="font-[family-name:var(--font-merriweather)] font-bold text-lg sm:text-xl md:text-2xl text-[#1A2E1A] tracking-tight truncate">{t("brand")}</span>
+            <Link href="/" className="flex items-center cursor-pointer min-w-0 shrink-0">
+              <Image
+                src="/logo.png"
+                alt={t("brand")}
+                width={980}
+                height={278}
+                className="h-8 sm:h-10 md:h-16 w-auto object-contain"
+                priority
+              />
             </Link>
             {/* <div className="hidden lg:flex space-x-8">
               <Link
