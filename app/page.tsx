@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import Link from "next/link"
+import HeroImageCarousel from "@/components/hero-image-carousel"
 import {
   Leaf,
   Sparkles,
@@ -21,52 +22,60 @@ export default async function Home() {
   return (
     <>
       {/* Hero Section */}
-      <section className="relative min-h-[70vh] sm:min-h-[80vh] md:min-h-[85vh] flex items-center overflow-hidden">
+      <section className="relative min-h-[72vh] sm:min-h-[80vh] md:min-h-[86vh] flex items-center overflow-hidden">
         <div className="absolute inset-0 z-0">
-          <Image
-            alt="Healthy Farm"
-            src="https://lh3.googleusercontent.com/aida-public/AB6AXuCrttrurBXIRTLt-qUw2YzkwBmgwt6rhz3PXKi1MSFRHIv0dEeRUd4qDtmijLn4u6EyF2Y-MznKls_RgfKQuRafFuZTTXSK7yBx5Ur6cNAtq-dwFeyqJPHQjeSldeDpdjIHPQ-kqVdhwS0rMz6lU89jQ0TlbF92oZSI4J3xY5NHTYof_yLJLLK06ant8MCmmJykmTsUKMKRIysVlVVRDZCur-eurf6V-gNyhUcY9bfqoUKam72dLdcRF4-2wUUWvTyt7TQJ7xOU8Xhm"
-            fill
-            className="object-cover"
-            priority
+          <HeroImageCarousel
+            images={[
+              "/pea-tendrils-2083530_1280.jpg",
+              "/cotton-223733_1280.jpg",
+              "/paddy-5424738_1280.jpg",
+              "/tractor-6672017_1280.jpg",
+            ]}
           />
-          <div className="absolute inset-0 bg-black/40"></div>
+          <div className="absolute inset-0 bg-[#143D2E]/65"></div>
+          <div className="absolute inset-y-0 left-0 w-[72%] bg-gradient-to-r from-[#1E5A43]/85 via-[#1E5A43]/65 to-transparent"></div>
           <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-[#FDFDFB]"></div>
+          <div
+            aria-hidden="true"
+            className="absolute inset-x-0 bottom-0 h-8 bg-[#FDFDFB] [clip-path:polygon(0_35%,6%_58%,12%_40%,18%_66%,25%_44%,32%_72%,39%_46%,46%_68%,53%_42%,60%_70%,67%_45%,74%_64%,81%_38%,88%_62%,94%_36%,100%_54%,100%_100%,0_100%)]"
+          />
         </div>
-        <div className="relative z-10 max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-12 sm:py-16 md:py-24 text-center">
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 sm:px-4 sm:py-1.5 rounded-full bg-white/90 border border-white/70 text-[#2E7D32] font-semibold text-xs sm:text-sm mb-4 sm:mb-6 shadow-sm">
+        <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-14 md:py-20 text-center sm:text-left">
+          <div className="inline-flex items-center gap-2 text-white/90 font-semibold text-[10px] sm:text-xs tracking-[0.28em] uppercase mb-4 sm:mb-6">
             <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#2E7D32]/70 opacity-70"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-[#2E7D32]/80"></span>
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#86EFAC]/70 opacity-70"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-[#86EFAC]"></span>
             </span>
             {t("badge")}
           </div>
-          <h1 className="font-[family-name:var(--font-merriweather)] text-3xl sm:text-4xl md:text-5xl lg:text-7xl font-bold text-white mb-4 sm:mb-6 leading-tight drop-shadow-sm px-1">
+          <h1 className="max-w-3xl mx-auto sm:mx-0 font-[family-name:var(--font-merriweather)] text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold text-white mb-4 sm:mb-6 leading-[1.08] drop-shadow-sm">
             {t("title")}
-            <br />
-            <span className="text-white">{t("titleLine2")}</span>
+            <br className="hidden sm:block" />
+            {/* <span className="text-white">{t("titleLine2")}</span> */}
           </h1>
-          <p className="text-base sm:text-lg md:text-xl lg:text-2xl text-white/90 max-w-3xl mx-auto mb-6 sm:mb-10 leading-relaxed font-light px-1">
+          <p className="text-sm sm:text-base md:text-lg text-white/85 max-w-xl mx-auto sm:mx-0 mb-6 sm:mb-9 leading-relaxed font-normal">
             {t("subtitle")}
           </p>
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4 w-full sm:w-auto max-w-xs sm:max-w-none mx-auto">
+          <div className="flex flex-col sm:flex-row items-center sm:items-start justify-center sm:justify-start gap-3 sm:gap-4 w-full sm:w-auto max-w-xs sm:max-w-none mx-auto sm:mx-0">
             <Link href="/diagnosis" className="w-full sm:w-auto">
               <Button
                 size="lg"
-                className="w-full sm:w-auto px-6 py-3 sm:px-8 sm:py-4 bg-[#2E7D32] hover:bg-[#1B5E20] text-white rounded-xl font-bold text-base sm:text-lg transition-all transform hover:-translate-y-1 shadow-lg flex items-center justify-center gap-2"
+                className="w-full sm:w-auto px-5 py-2.5 sm:px-7 sm:py-3.5 bg-[#2E7D32] hover:bg-[#1B5E20] text-white rounded-md font-semibold text-sm sm:text-base transition-all hover:-translate-y-0.5 flex items-center justify-center gap-2"
               >
                 <BarChart3 className="w-4 h-4 sm:w-5 sm:h-5" />
                 {t("ctaAnalysis")}
               </Button>
             </Link>
-            <Button
-              variant="outline"
-              size="lg"
-              className="w-full sm:w-auto px-6 py-3 sm:px-8 sm:py-4 bg-white hover:bg-gray-50 text-[#2E7D32] border-white rounded-xl font-bold text-base sm:text-lg transition-all flex items-center justify-center gap-2"
-            >
-              <PlayCircle className="w-4 h-4 sm:w-5 sm:h-5" />
-              {t("ctaDemo")}
-            </Button>
+            <Link href="https://youtu.be/hNKXye-b1r4" target="_blank" rel="noopener noreferrer" className="w-full sm:w-auto">
+              <Button
+                variant="outline"
+                size="lg"
+                className="w-full sm:w-auto px-5 py-2.5 sm:px-7 sm:py-3.5 bg-white/12 hover:bg-white/20 text-white hover:text-white border-white/50 rounded-md font-semibold text-sm sm:text-base transition-all flex items-center justify-center gap-2"
+              >
+                <PlayCircle className="w-4 h-4 sm:w-5 sm:h-5" />
+                {t("ctaDemo")}
+              </Button>
+            </Link>
           </div>
         </div>
       </section>
