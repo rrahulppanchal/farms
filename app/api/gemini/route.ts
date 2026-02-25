@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
+import { getGeminiLanguageInstruction } from "@/lib/i18n-locales"
 
 export async function POST(request: NextRequest) {
   try {
-    const { message, context } = await request.json()
+    const { message, context, locale: localeParam } = await request.json()
+    const locale = localeParam && typeof localeParam === "string" ? localeParam : "en"
 
     const apiKey = process.env.GEMINI_API_KEY
 
@@ -13,10 +15,12 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Build the prompt with context if provided
+    const languageInstruction = getGeminiLanguageInstruction(locale)
+
+    // Build the prompt with context if provided; respond in user's language
     const prompt = context
-      ? `You are an expert AI agronomist helping farmers with crop diagnosis and treatment. Use the following context to provide accurate, helpful advice:\n\nContext: ${JSON.stringify(context)}\n\nQuestion: ${message}\n\nProvide a clear, concise, and actionable response.`
-      : `You are an expert AI agronomist helping farmers with crop diagnosis and treatment. Answer the following question with clear, concise, and actionable advice:\n\n${message}`
+      ? `You are an expert AI agronomist helping farmers with crop diagnosis and treatment. Use the following context to provide accurate, helpful advice:\n\nContext: ${JSON.stringify(context)}\n\nQuestion: ${message}\n\n${languageInstruction}\n\nProvide a clear, concise, and actionable response in the required language and script.`
+      : `You are an expert AI agronomist helping farmers with crop diagnosis and treatment. Answer the following question with clear, concise, and actionable advice:\n\n${message}\n\n${languageInstruction}\n\nProvide your response in the required language and script.`
 
     const response = await fetch(
       "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent",

@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
+import { useLocale, useTranslations } from "next-intl"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -118,12 +119,14 @@ interface DiagnosisReport {
 
 export default function DiagnosisReportPage() {
   const router = useRouter()
+  const locale = useLocale()
+  const t = useTranslations("report")
   const [report, setReport] = useState<DiagnosisReport | null>(null)
   const [message, setMessage] = useState("")
   const [filter, setFilter] = useState("all")
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [isLoading, setIsLoading] = useState(false)
-  const [isChatExpanded, setIsChatExpanded] = useState(true)
+  const [isChatExpanded, setIsChatExpanded] = useState(false)
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false)
 
   // Convert markdown-style formatting to HTML
@@ -470,20 +473,82 @@ export default function DiagnosisReportPage() {
     }
   }
 
+  // Normalize report: if diagnosis.description is raw JSON (e.g. from parse failure), parse and extract real diagnosis
+  const normalizeReport = (report: DiagnosisReport): DiagnosisReport => {
+    const desc = report?.analysis?.diagnosis?.description
+    if (typeof desc !== "string" || desc.length < 20) return report
+    const trimmed = desc.trim()
+    const firstBrace = trimmed.indexOf("{")
+    if (firstBrace === -1) return report
+    try {
+      const jsonStr = trimmed.slice(firstBrace)
+      const parsed = JSON.parse(jsonStr)
+      const diagnosis = parsed?.diagnosis ?? parsed
+      if (diagnosis && typeof diagnosis === "object") {
+        return {
+          ...report,
+          analysis: {
+            ...report.analysis,
+            diagnosis: {
+              diseaseName: diagnosis.diseaseName ?? report.analysis.diagnosis.diseaseName,
+              severity: diagnosis.severity ?? report.analysis.diagnosis.severity,
+              confidence: diagnosis.confidence ?? report.analysis.diagnosis.confidence,
+              description: typeof diagnosis.description === "string" ? diagnosis.description : report.analysis.diagnosis.description,
+              scientificName: diagnosis.scientificName ?? report.analysis.diagnosis.scientificName,
+            },
+          },
+        }
+      }
+    } catch {
+      // Parse failed (e.g. truncated JSON). Try to extract diseaseName and description with regex so we don't show raw JSON.
+      const diseaseNameMatch = trimmed.match(/"diseaseName"\s*:\s*"([^"]*)"/)
+      const descriptionMatch = trimmed.match(/"description"\s*:\s*"((?:[^"\\]|\\.)*)"/)
+      if (diseaseNameMatch || descriptionMatch) {
+        return {
+          ...report,
+          analysis: {
+            ...report.analysis,
+            diagnosis: {
+              ...report.analysis.diagnosis,
+              diseaseName: diseaseNameMatch ? diseaseNameMatch[1] : report.analysis.diagnosis.diseaseName,
+              description: descriptionMatch ? descriptionMatch[1].replace(/\\./g, (m) => (m === '\\n' ? '\n' : m === '\\"' ? '"' : m)) : "The analysis could not be fully displayed. Please run diagnosis again for a complete report.",
+            },
+          },
+        }
+      }
+      // Description looks like JSON but we couldn't parse or extract; hide raw JSON
+      return {
+        ...report,
+        analysis: {
+          ...report.analysis,
+          diagnosis: {
+            ...report.analysis.diagnosis,
+            description: "The analysis could not be displayed. Please run diagnosis again for a complete report.",
+          },
+        },
+      }
+    }
+    return report
+  }
+
   // Load report data from sessionStorage
   useEffect(() => {
     const reportData = sessionStorage.getItem("diagnosisReport")
     if (reportData) {
       try {
         const parsed = JSON.parse(reportData)
-        setReport(parsed)
-        // Initialize chat with greeting
+        const normalized = normalizeReport(parsed)
+        setReport(normalized)
+        // Initialize chat with greeting (localized)
         setMessages([
           {
             id: "1",
-            text: `Hello! I've analyzed your ${parsed.analysis.diagnosis.diseaseName} report for ${parsed.cropInfo.cropType}. How can I help you implement the treatment plan?`,
+            text: t("chatGreeting", {
+              diseaseName: normalized.analysis.diagnosis.diseaseName,
+              cropType: normalized.cropInfo.cropType,
+            }),
             sender: "ai",
-            timestamp: new Date().toLocaleTimeString("en-US", {
+            timestamp: new Date().toLocaleTimeString(locale || "en", {
               hour: "numeric",
               minute: "2-digit",
             }),
@@ -499,6 +564,27 @@ export default function DiagnosisReportPage() {
     }
   }, [router])
 
+  // Update initial greeting when locale changes (so chat stays in regional language)
+  useEffect(() => {
+    if (!report) return
+    setMessages((prev) => {
+      if (prev.length !== 1 || prev[0].sender !== "ai") return prev
+      return [
+        {
+          ...prev[0],
+          text: t("chatGreeting", {
+            diseaseName: report.analysis.diagnosis.diseaseName,
+            cropType: report.cropInfo.cropType,
+          }),
+          timestamp: new Date().toLocaleTimeString(locale || "en", {
+            hour: "numeric",
+            minute: "2-digit",
+          }),
+        },
+      ]
+    })
+  }, [locale, t, report])
+
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!message.trim() || isLoading) return
@@ -507,7 +593,7 @@ export default function DiagnosisReportPage() {
       id: Date.now().toString(),
       text: message,
       sender: "user",
-      timestamp: new Date().toLocaleTimeString("en-US", {
+      timestamp: new Date().toLocaleTimeString(locale || "en", {
         hour: "numeric",
         minute: "2-digit",
       }),
@@ -538,6 +624,7 @@ export default function DiagnosisReportPage() {
         body: JSON.stringify({
           message: userMessage.text,
           context: context,
+          locale,
         }),
       })
 
@@ -549,9 +636,9 @@ export default function DiagnosisReportPage() {
 
       const aiMessage: ChatMessage = {
         id: (Date.now() + 1).toString(),
-        text: data.text || "I apologize, but I couldn't generate a response. Please try again.",
+        text: data.text || t("chatApiError"),
         sender: "ai",
-        timestamp: new Date().toLocaleTimeString("en-US", {
+        timestamp: new Date().toLocaleTimeString(locale || "en", {
           hour: "numeric",
           minute: "2-digit",
         }),
@@ -562,9 +649,9 @@ export default function DiagnosisReportPage() {
       console.error("Error sending message:", error)
       const errorMessage: ChatMessage = {
         id: (Date.now() + 1).toString(),
-        text: "I'm sorry, I encountered an error. Please try again later.",
+        text: t("chatError"),
         sender: "ai",
-        timestamp: new Date().toLocaleTimeString("en-US", {
+        timestamp: new Date().toLocaleTimeString(locale || "en", {
           hour: "numeric",
           minute: "2-digit",
         }),
@@ -582,7 +669,7 @@ export default function DiagnosisReportPage() {
       id: Date.now().toString(),
       text: question,
       sender: "user",
-      timestamp: new Date().toLocaleTimeString("en-US", {
+      timestamp: new Date().toLocaleTimeString(locale || "en", {
         hour: "numeric",
         minute: "2-digit",
       }),
@@ -611,6 +698,7 @@ export default function DiagnosisReportPage() {
         body: JSON.stringify({
           message: question,
           context: context,
+          locale,
         }),
       })
 
@@ -622,9 +710,9 @@ export default function DiagnosisReportPage() {
 
       const aiMessage: ChatMessage = {
         id: (Date.now() + 1).toString(),
-        text: data.text || "I apologize, but I couldn't generate a response. Please try again.",
+        text: data.text || t("chatApiError"),
         sender: "ai",
-        timestamp: new Date().toLocaleTimeString("en-US", {
+        timestamp: new Date().toLocaleTimeString(locale || "en", {
           hour: "numeric",
           minute: "2-digit",
         }),
@@ -635,9 +723,9 @@ export default function DiagnosisReportPage() {
       console.error("Error sending message:", error)
       const errorMessage: ChatMessage = {
         id: (Date.now() + 1).toString(),
-        text: "I'm sorry, I encountered an error. Please try again later.",
+        text: t("chatError"),
         sender: "ai",
-        timestamp: new Date().toLocaleTimeString("en-US", {
+        timestamp: new Date().toLocaleTimeString(locale || "en", {
           hour: "numeric",
           minute: "2-digit",
         }),
@@ -653,7 +741,7 @@ export default function DiagnosisReportPage() {
       <div className="min-h-screen bg-[#F0FDF4] dark:bg-[#0f172a] text-gray-900 dark:text-gray-100 transition-colors duration-300 flex items-center justify-center">
         <div className="text-center">
           <AlertCircle className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-          <p className="text-gray-600 dark:text-gray-400">Loading report...</p>
+          <p className="text-gray-600 dark:text-gray-400">{t("loadingReport")}</p>
         </div>
       </div>
     )
@@ -684,7 +772,7 @@ export default function DiagnosisReportPage() {
   }
 
   const formatDate = (timestamp: string) => {
-    return new Date(timestamp).toLocaleDateString("en-US", {
+    return new Date(timestamp).toLocaleDateString(locale || "en", {
       month: "short",
       day: "numeric",
       year: "numeric",
@@ -701,6 +789,22 @@ export default function DiagnosisReportPage() {
   const filteredPrevention = report.analysis.treatmentPlan.prevention.filter(
     (item) => filter === "all" || item.type === filter
   )
+  const isAnalysisError =
+    report.analysis.diagnosis.diseaseName === "Analysis Error" ||
+    report.analysis.diagnosis.description?.startsWith("The analysis could not be parsed")
+  const diagnosisTitle = isAnalysisError ? t("analysisErrorTitle") : report.analysis.diagnosis.diseaseName
+  const diagnosisDescription = isAnalysisError ? t("analysisErrorDescription") : report.analysis.diagnosis.description
+  const displaySeverity = isAnalysisError ? t("riskModerate") : report.analysis.diagnosis.severity
+  const displayHumidityValue = report.analysis.environmentalFactors.humidity.value === "Unknown"
+    ? "--"
+    : report.analysis.environmentalFactors.humidity.value
+  const displayTemperatureValue = report.analysis.environmentalFactors.temperature.value === "Unknown"
+    ? "--"
+    : report.analysis.environmentalFactors.temperature.value
+  const displayImpactDescription =
+    isAnalysisError || report.analysis.impact.description === "Unable to assess impact"
+      ? t("analysisErrorDescription")
+      : report.analysis.impact.description
 
   return (
     <div className="min-h-screen bg-[#F0FDF4] dark:bg-[#0f172a] text-gray-900 dark:text-gray-100 transition-colors duration-300">
@@ -712,9 +816,9 @@ export default function DiagnosisReportPage() {
             className="flex items-center text-gray-600 dark:text-gray-400 hover:text-[#2E7D32] dark:hover:text-[#2E7D32] transition-colors text-sm font-medium"
           >
             <ArrowLeft className="w-4 h-4 mr-1" />
-            Back to Dashboard
+            {t("backToDashboard")}
           </Link>
-          <span className="text-sm text-gray-600 dark:text-gray-400">Report ID: #{report.reportId}</span>
+          <span className="text-sm text-gray-600 dark:text-gray-400">{t("reportId")}: #{report.reportId}</span>
         </div>
 
         {/* Main Report Card */}
@@ -733,13 +837,13 @@ export default function DiagnosisReportPage() {
                     />
                     <div className="absolute inset-0 bg-black/20 group-hover:bg-black/10 transition-colors pointer-events-none"></div>
                     <span className="absolute bottom-2 left-2 bg-black/60 text-white text-xs px-2 py-1 rounded backdrop-blur-sm">
-                      Crop Image {report.imagePreviews.cropImages.length > 1 ? `(1 of ${report.imagePreviews.cropImages.length})` : ""}
+                      {t("cropImage")} {report.imagePreviews.cropImages.length > 1 ? t("cropImageOf", { count: report.imagePreviews.cropImages.length }) : ""}
                     </span>
                   </div>
                 </div>
                 {report.imagePreviews.cropImages.length > 1 && (
                   <div className="mt-2 text-xs text-gray-500 dark:text-gray-400 text-center">
-                    +{report.imagePreviews.cropImages.length - 1} more crop image{report.imagePreviews.cropImages.length - 1 > 1 ? "s" : ""}
+                    {t("moreCropImages", { n: report.imagePreviews.cropImages.length - 1 })}
                   </div>
                 )}
               </div>
@@ -747,14 +851,14 @@ export default function DiagnosisReportPage() {
               <div className="w-full md:w-48 h-32 md:h-32 flex-shrink-0 rounded-xl overflow-hidden shadow-md relative group bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
                 <div className="text-center text-gray-400 dark:text-gray-500">
                   <Leaf className="w-8 h-8 mx-auto mb-2" />
-                  <span className="text-xs">No crop image</span>
+                  <span className="text-xs">{t("noCropImage")}</span>
                 </div>
               </div>
             )}
             <div className="flex-grow">
               <div className="flex items-center gap-3 mb-2">
                 <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold border ${getSeverityColor(report.analysis.diagnosis.severity)}`}>
-                  {report.analysis.diagnosis.severity}
+                  {displaySeverity}
                 </span>
                 <span className="text-sm text-gray-600 dark:text-gray-400 flex items-center gap-1">
                   <Calendar className="w-4 h-4" />
@@ -762,20 +866,20 @@ export default function DiagnosisReportPage() {
                 </span>
               </div>
               <h1 className="font-[family-name:var(--font-merriweather)] text-3xl md:text-4xl text-gray-900 dark:text-white font-bold mb-2">
-                {report.analysis.diagnosis.diseaseName}
-                {report.analysis.diagnosis.scientificName && (
+                {diagnosisTitle}
+                {report.analysis.diagnosis.scientificName && !isAnalysisError && (
                   <span className="text-lg font-normal text-gray-500 dark:text-gray-400 ml-2">
                     ({report.analysis.diagnosis.scientificName})
                   </span>
                 )}
               </h1>
               <p className="text-gray-600 dark:text-gray-400 max-w-2xl">
-                {report.analysis.diagnosis.description}
+                {diagnosisDescription}
               </p>
             </div>
             <div className="flex-shrink-0 flex flex-col items-end">
               <div className="text-right mb-1">
-                <span className="block text-sm text-gray-600 dark:text-gray-400">AI Confidence</span>
+                <span className="block text-sm text-gray-600 dark:text-gray-400">{t("aiConfidence")}</span>
                 <span className="text-4xl font-bold text-[#2E7D32]">{report.analysis.diagnosis.confidence}%</span>
               </div>
             </div>
@@ -791,7 +895,7 @@ export default function DiagnosisReportPage() {
                 <CardHeader>
                   <CardTitle className="font-[family-name:var(--font-merriweather)] text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
                     <ImageIcon className="w-5 h-5 text-[#2E7D32]" />
-                    Uploaded Evidence Images
+                    {t("uploadedEvidenceImages")}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -801,7 +905,7 @@ export default function DiagnosisReportPage() {
                       <div className="space-y-3">
                         <div className="flex items-center gap-2">
                           <Leaf className="w-4 h-4 text-[#2E7D32]" />
-                          <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">Crop Images</span>
+                          <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">{t("cropImages")}</span>
                           <span className="text-xs text-gray-500 dark:text-gray-400">({report.imagePreviews.cropImages.length})</span>
                         </div>
                         <div className="grid grid-cols-2 gap-2">
@@ -814,7 +918,7 @@ export default function DiagnosisReportPage() {
                               />
                               {index === 3 && report.imagePreviews.cropImages.length > 4 && (
                                 <div className="absolute inset-0 bg-black/60 flex items-center justify-center pointer-events-none">
-                                  <span className="text-white text-xs font-medium">+{report.imagePreviews.cropImages.length - 4} more</span>
+                                  <span className="text-white text-xs font-medium">{t("moreCropImages", { n: report.imagePreviews.cropImages.length - 4 })}</span>
                                 </div>
                               )}
                             </div>
@@ -822,7 +926,7 @@ export default function DiagnosisReportPage() {
                         </div>
                         {report.imagePreviews.cropImages.length > 4 && (
                           <p className="text-xs text-gray-500 dark:text-gray-400 text-center">
-                            Showing 4 of {report.imagePreviews.cropImages.length} crop images
+                            {t("showingCropImages", { shown: 4, total: report.imagePreviews.cropImages.length })}
                           </p>
                         )}
                       </div>
@@ -833,7 +937,7 @@ export default function DiagnosisReportPage() {
                       <div className="space-y-3">
                         <div className="flex items-center gap-2">
                           <Layers className="w-4 h-4 text-[#C05621]" />
-                          <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">Soil Report</span>
+                          <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">{t("soilReport")}</span>
                         </div>
                         <div className="relative aspect-square rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700 group cursor-pointer">
                           <img
@@ -850,7 +954,7 @@ export default function DiagnosisReportPage() {
                       <div className="space-y-3">
                         <div className="flex items-center gap-2">
                           <Cloud className="w-4 h-4 text-blue-500" />
-                          <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">Weather & Sky</span>
+                          <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">{t("weatherSky")}</span>
                         </div>
                         <div className="relative aspect-square rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700 group cursor-pointer">
                           <img
@@ -871,14 +975,14 @@ export default function DiagnosisReportPage() {
               <CardHeader>
                 <CardTitle className="font-[family-name:var(--font-merriweather)] text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
                   <BarChart3 className="w-5 h-5 text-[#2E7D32]" />
-                  Executive Summary
+                  {t("executiveSummary")}
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="bg-[#F0FDF4] dark:bg-gray-800/50 rounded-xl p-5 border border-green-100 dark:border-gray-700">
                     <h3 className="text-sm font-bold text-gray-700 dark:text-gray-200 uppercase tracking-wide mb-4">
-                      Environmental Risk Factors
+                      {t("environmentalRisk")}
                     </h3>
                     <div className="space-y-4">
                       <div className="flex items-center justify-between">
@@ -887,12 +991,12 @@ export default function DiagnosisReportPage() {
                             <Droplets className="w-5 h-5" />
                           </div>
                           <div>
-                            <div className="text-sm font-medium text-gray-900 dark:text-white">Humidity</div>
-                            <div className="text-xs text-gray-600 dark:text-gray-400">{report.analysis.environmentalFactors.humidity.value}</div>
+                            <div className="text-sm font-medium text-gray-900 dark:text-white">{t("humidity")}</div>
+                            <div className="text-xs text-gray-600 dark:text-gray-400">{displayHumidityValue}</div>
                           </div>
                         </div>
                         <span className={`text-xs font-bold px-2 py-1 rounded ${getRiskColor(report.analysis.environmentalFactors.humidity.riskLevel)}`}>
-                          {report.analysis.environmentalFactors.humidity.riskLevel} RISK
+                          {report.analysis.environmentalFactors.humidity.riskLevel === "HIGH" ? t("riskHigh") : report.analysis.environmentalFactors.humidity.riskLevel === "MODERATE" ? t("riskModerate") : t("riskLow")} {t("risk")}
                         </span>
                       </div>
                       <div className="flex items-center justify-between">
@@ -901,22 +1005,22 @@ export default function DiagnosisReportPage() {
                             <Thermometer className="w-5 h-5" />
                           </div>
                           <div>
-                            <div className="text-sm font-medium text-gray-900 dark:text-white">Temperature</div>
-                            <div className="text-xs text-gray-600 dark:text-gray-400">{report.analysis.environmentalFactors.temperature.value}</div>
+                            <div className="text-sm font-medium text-gray-900 dark:text-white">{t("temperature")}</div>
+                            <div className="text-xs text-gray-600 dark:text-gray-400">{displayTemperatureValue}</div>
                           </div>
                         </div>
                         <span className={`text-xs font-bold px-2 py-1 rounded ${getRiskColor(report.analysis.environmentalFactors.temperature.riskLevel)}`}>
-                          {report.analysis.environmentalFactors.temperature.riskLevel}
+                          {report.analysis.environmentalFactors.temperature.riskLevel === "HIGH" ? t("riskHigh") : report.analysis.environmentalFactors.temperature.riskLevel === "MODERATE" ? t("riskModerate") : t("riskLow")}
                         </span>
                       </div>
                     </div>
                   </div>
                   <div className="flex flex-col justify-center">
                     <h3 className="text-sm font-bold text-gray-700 dark:text-gray-200 uppercase tracking-wide mb-2">
-                      Potential Impact
+                      {t("potentialImpact")}
                     </h3>
                     <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed mb-4">
-                      {report.analysis.impact.description}
+                      {displayImpactDescription}
                     </p>
                     <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5 mb-1">
                       <div 
@@ -925,8 +1029,8 @@ export default function DiagnosisReportPage() {
                       ></div>
                     </div>
                     <div className="flex justify-between text-xs text-gray-600 dark:text-gray-400">
-                      <span>Low Risk</span>
-                      <span>Severe Risk ({report.analysis.environmentalFactors.overallRisk}%)</span>
+                      <span>{t("lowRisk")}</span>
+                      <span>{t("severeRisk", { percent: report.analysis.environmentalFactors.overallRisk })}</span>
                     </div>
                   </div>
                 </div>
@@ -939,7 +1043,7 @@ export default function DiagnosisReportPage() {
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                   <CardTitle className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2.5">
                     <Heart className="w-5 h-5 text-[#2E7D32] stroke-2" />
-                    Treatment Action Plan
+                    {t("treatmentPlan")}
                   </CardTitle>
                   <div className="flex gap-2">
                     <button
@@ -950,7 +1054,7 @@ export default function DiagnosisReportPage() {
                           : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
                       }`}
                     >
-                      All
+                      {t("filterAll")}
                     </button>
                     <button
                       onClick={() => setFilter("organic")}
@@ -960,7 +1064,7 @@ export default function DiagnosisReportPage() {
                           : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
                       }`}
                     >
-                      Organic
+                      {t("filterOrganic")}
                     </button>
                     <button
                       onClick={() => setFilter("chemical")}
@@ -970,7 +1074,7 @@ export default function DiagnosisReportPage() {
                           : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
                       }`}
                     >
-                      Chemical
+                      {t("filterChemical")}
                     </button>
                   </div>
                 </div>
@@ -981,9 +1085,9 @@ export default function DiagnosisReportPage() {
                   {filteredImmediate.length > 0 && (
                     <div className="relative pb-10">
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-2">
-                        <h3 className="text-lg font-bold text-gray-900 dark:text-white">Immediate Action</h3>
+                        <h3 className="text-lg font-bold text-gray-900 dark:text-white">{t("immediateAction")}</h3>
                         <span className="text-xs font-bold uppercase tracking-wider text-white bg-red-600 px-3 py-1.5 rounded-md w-fit">
-                          WITHIN 24 HOURS
+                          {t("within24Hours")}
                         </span>
                       </div>
                       
@@ -1007,7 +1111,7 @@ export default function DiagnosisReportPage() {
                                       href="#"
                                       className="inline-flex items-center text-sm font-medium text-[#2E7D32] hover:text-[#1B5E20] hover:underline transition-colors"
                                     >
-                                      View Product Recommendations <ExternalLink className="w-3 h-3 ml-1" />
+                                      {t("viewProductRecommendations")} <ExternalLink className="w-3 h-3 ml-1" />
                                     </a>
                                   </div>
                                 ) : (
@@ -1016,7 +1120,7 @@ export default function DiagnosisReportPage() {
                                       href="/diagnosis"
                                       className="inline-flex items-center text-sm font-medium text-[#2E7D32] hover:text-[#1B5E20] hover:underline transition-colors"
                                     >
-                                      Upload images <span className="ml-1">→</span>
+                                      {t("uploadImages")} <span className="ml-1">→</span>
                                     </a>
                                   </div>
                                 )}
@@ -1032,9 +1136,9 @@ export default function DiagnosisReportPage() {
                   {filteredFollowUp.length > 0 && (
                     <div className="relative pb-10">
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-2">
-                        <h3 className="text-lg font-bold text-gray-900 dark:text-white">Follow-up Care</h3>
+                        <h3 className="text-lg font-bold text-gray-900 dark:text-white">{t("followUpCare")}</h3>
                         <span className="text-xs font-bold uppercase tracking-wider text-yellow-800 bg-yellow-100 dark:bg-yellow-900/30 px-3 py-1.5 rounded-full w-fit">
-                          DAY 3-7
+                          {t("day3to7")}
                         </span>
                       </div>
                       
@@ -1064,7 +1168,7 @@ export default function DiagnosisReportPage() {
                             </div>
                             <div className="flex-grow">
                               <span className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
-                                <strong className="font-semibold text-gray-900 dark:text-white">Pruning:</strong> {report.analysis.recommendations.pruning}
+                                <strong className="font-semibold text-gray-900 dark:text-white">{t("pruningLabel")}:</strong> {report.analysis.recommendations.pruning}
                               </span>
                             </div>
                           </li>
@@ -1076,7 +1180,7 @@ export default function DiagnosisReportPage() {
                             </div>
                             <div className="flex-grow">
                               <span className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
-                                <strong className="font-semibold text-gray-900 dark:text-white">Watering:</strong> {report.analysis.recommendations.watering}
+                                <strong className="font-semibold text-gray-900 dark:text-white">{t("wateringLabel")}:</strong> {report.analysis.recommendations.watering}
                               </span>
                             </div>
                           </li>
@@ -1089,9 +1193,9 @@ export default function DiagnosisReportPage() {
                   {filteredPrevention.length > 0 && (
                     <div className="relative pb-4">
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-2">
-                        <h3 className="text-lg font-bold text-gray-900 dark:text-white">Prevention & Recovery</h3>
+                        <h3 className="text-lg font-bold text-gray-900 dark:text-white">{t("prevention")}</h3>
                         <span className="text-xs font-bold uppercase tracking-wider text-[#2E7D32] bg-green-100 dark:bg-green-900/30 px-3 py-1.5 rounded-md w-fit">
-                          POST-SEASON
+                          {t("postSeason")}
                         </span>
                       </div>
                       
@@ -1118,14 +1222,14 @@ export default function DiagnosisReportPage() {
             <Card className="bg-white dark:bg-[#1e293b] rounded-2xl shadow-[0_4px_20px_-2px_rgba(0,0,0,0.05)] border border-gray-100 dark:border-gray-700">
               <CardHeader>
                 <CardTitle className="text-sm font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
-                  Report Actions
+                  {t("reportActions")}
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                <Button className="w-full bg-[#2E7D32] hover:bg-[#1B5E20] text-white py-3 px-4 rounded-xl font-medium transition-colors shadow-md">
+                {/* <Button className="w-full bg-[#2E7D32] hover:bg-[#1B5E20] text-white py-3 px-4 rounded-xl font-medium transition-colors shadow-md">
                   <Share2 className="w-4 h-4 mr-2" />
-                  Share Report
-                </Button>
+                  {t("shareReport")}
+                </Button> */}
                 <Button
                   variant="outline"
                   onClick={downloadPDF}
@@ -1133,7 +1237,7 @@ export default function DiagnosisReportPage() {
                   className="w-full border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 py-3 px-4 rounded-xl font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Download className="w-4 h-4 mr-2" />
-                  {isGeneratingPDF ? "Generating PDF..." : "Download PDF Report"}
+                  {isGeneratingPDF ? t("generatingPdf") : t("downloadPdf")}
                 </Button>
               </CardContent>
             </Card>
@@ -1147,7 +1251,7 @@ export default function DiagnosisReportPage() {
             <button
               onClick={() => setIsChatExpanded(true)}
               className="w-14 h-14 bg-[#2E7D32] hover:bg-[#1B5E20] text-white rounded-full shadow-lg flex items-center justify-center transition-all hover:scale-110 animate-in fade-in zoom-in duration-200"
-              aria-label="Open AI Agronomist Chat"
+              aria-label={t("openChatAria")}
             >
               <MessageSquare className="w-6 h-6" />
             </button>
@@ -1162,19 +1266,19 @@ export default function DiagnosisReportPage() {
                     <div className="w-10 h-10 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center text-[#2E7D32]">
                       <Bot className="w-5 h-5" />
                     </div>
-                    <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white dark:border-[#1e293b] rounded-full"></span>
+                    {/* <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white dark:border-[#1e293b] rounded-full"></span> */}
                   </div>
                   <div>
-                    <h3 className="font-bold text-gray-900 dark:text-white text-sm leading-tight">AI Agronomist</h3>
-                    <span className="text-[10px] text-green-600 dark:text-green-400 font-semibold uppercase leading-tight">
-                      Online
-                    </span>
+                    <h3 className="font-bold text-gray-900 dark:text-white text-sm leading-tight">{t("aiAgronomist")}</h3>
+                    {/* <span className="text-[10px] text-green-600 dark:text-green-400 font-semibold uppercase leading-tight">
+                      {t("online")}
+                    </span> */}
                   </div>
                 </div>
                 <button 
                   onClick={() => setIsChatExpanded(false)}
                   className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
-                  aria-label="Close chat"
+                  aria-label={t("closeChatAria")}
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -1183,7 +1287,7 @@ export default function DiagnosisReportPage() {
               <div className="px-4 py-1 overflow-y-auto space-y-4 bg-gray-50/50 dark:bg-gray-900/20 flex-grow min-h-0">
                 <div className="flex flex-col items-center py-4">
                   <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest bg-white dark:bg-gray-800 px-3 py-1 rounded-full shadow-sm border border-gray-100 dark:border-gray-700">
-                    Today
+                    {t("today")}
                   </span>
                 </div>
 
@@ -1244,22 +1348,22 @@ export default function DiagnosisReportPage() {
                 {messages.length === 1 && (
                   <div className="flex flex-wrap gap-2 py-2">
                     <button
-                      onClick={() => handleQuickQuestion("Where to buy Copper Fungicide?")}
-                      className="text-xs px-3 py-1.5 rounded-full border border-[#2E7D32]/20 text-[#2E7D32] hover:bg-[#2E7D32] hover:text-white transition-colors bg-white dark:bg-gray-800"
-                    >
-                      Where to buy Copper Fungicide?
+onClick={() => handleQuickQuestion(t("chatSuggestion1"))}
+                    className="text-xs px-3 py-1.5 rounded-full border border-[#2E7D32]/20 text-[#2E7D32] hover:bg-[#2E7D32] hover:text-white transition-colors bg-white dark:bg-gray-800"
+                  >
+                      {t("chatSuggestion1")}
                     </button>
                     <button
-                      onClick={() => handleQuickQuestion("Is it safe for organic crops?")}
+                      onClick={() => handleQuickQuestion(t("chatSuggestion2"))}
                       className="text-xs px-3 py-1.5 rounded-full border border-[#2E7D32]/20 text-[#2E7D32] hover:bg-[#2E7D32] hover:text-white transition-colors bg-white dark:bg-gray-800"
                     >
-                      Is it safe for organic crops?
+                      {t("chatSuggestion2")}
                     </button>
                     <button
-                      onClick={() => handleQuickQuestion("Pruning tips")}
+                      onClick={() => handleQuickQuestion(t("chatSuggestion3"))}
                       className="text-xs px-3 py-1.5 rounded-full border border-[#2E7D32]/20 text-[#2E7D32] hover:bg-[#2E7D32] hover:text-white transition-colors bg-white dark:bg-gray-800"
                     >
-                      Pruning tips
+                      {t("chatSuggestion3")}
                     </button>
                   </div>
                 )}
@@ -1269,7 +1373,7 @@ export default function DiagnosisReportPage() {
                 <form onSubmit={handleSendMessage} className="relative flex items-center">
                   <Input
                     type="text"
-                    placeholder="Ask about this report..."
+                    placeholder={t("askPlaceholder")}
                     value={message}
                     onChange={(e) => setMessage(e.target.value)}
                     disabled={isLoading}
@@ -1284,7 +1388,7 @@ export default function DiagnosisReportPage() {
                   </button>
                 </form>
                 <p className="text-[10px] text-center text-gray-400 dark:text-gray-500 mt-2">
-                  AI can make mistakes. Consider asking a human expert for critical decisions.
+                  {t("aiDisclaimer")}
                 </p>
               </div>
             </Card>

@@ -6,6 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
+import { useLocale, useTranslations } from "next-intl"
 
 // Speech Recognition Types
 interface SpeechRecognition extends EventTarget {
@@ -80,6 +81,8 @@ import {
   Image as ImageIcon,
   Layers,
   Cloud,
+  CloudRain,
+  Sun,
   X,
   MapPin,
   Navigation,
@@ -89,12 +92,12 @@ import {
   Scissors,
   Thermometer,
   Droplets,
-  CloudRain,
   BarChart3,
   Mic,
   Square,
   Loader2,
   Sparkles,
+  RefreshCw,
 } from "lucide-react"
 import Image from "next/image"
 
@@ -171,8 +174,17 @@ const diagnosisSchema = z.object({
 
 type DiagnosisFormValues = z.infer<typeof diagnosisSchema>
 
+const CROP_TYPE_VALUES = ["Tomato", "Potato", "Corn (Maize)", "Wheat", "Rice", "Soybean", "Cotton", "Barley", "Oats", "Sorghum", "Pepper", "Cucumber", "Lettuce", "Carrot", "Onion", "Cabbage", "Broccoli", "Cauliflower", "Spinach", "Beans", "Peas", "Sunflower", "Canola", "Sugar Beet", "Other"] as const
+const GROWTH_STAGE_VALUES = ["Germination", "Seedling", "Vegetative", "Flowering", "Fruiting", "Maturation", "Harvest", "Post-Harvest", "Other"] as const
+const SOIL_CONDITION_VALUES = ["Well-drained", "Clay", "Sandy", "Loamy", "Silty", "Waterlogged", "Dry", "Other"] as const
+const WEATHER_CONDITION_VALUES = ["Sunny", "Cloudy", "Rainy", "Humid", "Dry", "Windy", "Frost", "Drought", "Other"] as const
+const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024
+const SUPPORTED_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp"])
+
 export default function DiagnosisPage() {
   const router = useRouter()
+  const locale = useLocale()
+  const t = useTranslations("diagnosis")
   const [imagePreviews, setImagePreviews] = useState<string[]>([])
   const [soilReportPreview, setSoilReportPreview] = useState<string | null>(null)
   const [weatherImagePreview, setWeatherImagePreview] = useState<string | null>(null)
@@ -180,6 +192,15 @@ export default function DiagnosisPage() {
   const [recognition, setRecognition] = useState<SpeechRecognition | null>(null)
   const [recordingTime, setRecordingTime] = useState(0)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const [isLocating, setIsLocating] = useState(false)
+  const [weatherData, setWeatherData] = useState<{
+    temp: number
+    conditionKey: string
+    tipKey: string
+    code: number
+    locality: string | null
+  } | null>(null)
+  const [weatherLoading, setWeatherLoading] = useState(true)
 
   const form = useForm<DiagnosisFormValues>({
     resolver: zodResolver(diagnosisSchema),
@@ -189,7 +210,7 @@ export default function DiagnosisPage() {
       customCropType: "",
       growthStage: "",
       customGrowthStage: "",
-      location: "Ames, Iowa, USA",
+      location: "Agra, Uttar Pradesh, 282001, India",
       soilCondition: "",
       customSoilCondition: "",
       weatherCondition: "",
@@ -207,27 +228,94 @@ export default function DiagnosisPage() {
   const weatherCondition = form.watch("weatherCondition")
   const description = form.watch("description")
 
+  const optimizeImageForUpload = async (file: File): Promise<File> => {
+    if (!file.type.startsWith("image/")) {
+      throw new Error(`File ${file.name} is not a valid image`)
+    }
+
+    // HEIC/HEIF is common on phones and often fails in downstream AI APIs.
+    if (!SUPPORTED_IMAGE_MIME_TYPES.has(file.type.toLowerCase())) {
+      throw new Error(
+        `File ${file.name} is not supported. Please upload JPG, PNG, or WEBP images from your device camera/gallery settings.`
+      )
+    }
+
+    if (file.size <= MAX_IMAGE_SIZE_BYTES) return file
+
+    // Compress large mobile photos client-side so upload works on small devices.
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(reader.result as string)
+      reader.onerror = reject
+      reader.readAsDataURL(file)
+    })
+
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const image = new window.Image()
+      image.onload = () => resolve(image)
+      image.onerror = reject
+      image.src = dataUrl
+    })
+
+    const canvas = document.createElement("canvas")
+    let width = img.width
+    let height = img.height
+    const maxDim = 1920
+    if (width > maxDim || height > maxDim) {
+      const ratio = Math.min(maxDim / width, maxDim / height)
+      width = Math.round(width * ratio)
+      height = Math.round(height * ratio)
+    }
+
+    canvas.width = width
+    canvas.height = height
+    const ctx = canvas.getContext("2d")
+    if (!ctx) throw new Error("Unable to process image")
+    ctx.drawImage(img, 0, 0, width, height)
+
+    let quality = 0.9
+    let blob: Blob | null = null
+    while (quality >= 0.4) {
+      blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", quality))
+      if (blob && blob.size <= MAX_IMAGE_SIZE_BYTES) break
+      quality -= 0.1
+    }
+
+    if (!blob) {
+      throw new Error(`Failed to optimize ${file.name}. Please try a different image.`)
+    }
+
+    const safeName = file.name.replace(/\.[^/.]+$/, "") || "image"
+    return new File([blob], `${safeName}.jpg`, { type: "image/jpeg" })
+  }
+
   // Handle image upload and preview
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
     if (!files || files.length === 0) return
 
     const fileArray = Array.from(files)
-    const imageFiles = fileArray.filter((file) => file.type.startsWith("image/"))
-
-    // Validate file sizes
-    const validFiles = imageFiles.filter((file) => {
-      if (file.size > 10 * 1024 * 1024) {
-        form.setError("cropImages", {
-          type: "manual",
-          message: `File ${file.name} exceeds 10MB limit`,
-        })
-        return false
+    const optimizedResults = await Promise.allSettled(fileArray.map((file) => optimizeImageForUpload(file)))
+    const validFiles: File[] = []
+    const errors: string[] = []
+    optimizedResults.forEach((result) => {
+      if (result.status === "fulfilled") {
+        validFiles.push(result.value)
+      } else {
+        errors.push(result.reason instanceof Error ? result.reason.message : "Invalid image file")
       }
-      return true
     })
 
-    if (validFiles.length === 0) return
+    if (errors.length > 0) {
+      form.setError("cropImages", {
+        type: "manual",
+        message: errors[0],
+      })
+    }
+    if (validFiles.length === 0) {
+      e.target.value = ""
+      return
+    }
 
     // Create preview URLs
     const newPreviews = validFiles.map((file) => URL.createObjectURL(file))
@@ -239,6 +327,7 @@ export default function DiagnosisPage() {
       shouldValidate: true,
       shouldDirty: true,
     })
+    e.target.value = ""
   }
 
   const handleImageRemove = (index: number) => {
@@ -257,87 +346,186 @@ export default function DiagnosisPage() {
     setImagePreviews((prev) => prev.filter((_, i) => i !== index))
   }
 
-  const handleSoilReportUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleSoilReportUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
 
-    if (file.size > 10 * 1024 * 1024) {
-      form.setError("soilReport", {
-        type: "manual",
-        message: "File exceeds 10MB limit",
-      })
+    const processedFile =
+      file.type.startsWith("image/")
+        ? await optimizeImageForUpload(file).catch((error: unknown) => {
+            form.setError("soilReport", {
+              type: "manual",
+              message: error instanceof Error ? error.message : "Invalid file",
+            })
+            return null
+          })
+        : file
+    if (!processedFile) {
+      e.target.value = ""
       return
     }
 
-    form.setValue("soilReport", file, {
+    form.setValue("soilReport", processedFile, {
       shouldValidate: true,
       shouldDirty: true,
     })
 
-    if (file.type.startsWith("image/")) {
-      const preview = URL.createObjectURL(file)
+    if (processedFile.type.startsWith("image/")) {
+      const preview = URL.createObjectURL(processedFile)
       setSoilReportPreview(preview)
     } else {
       setSoilReportPreview(null)
     }
+    e.target.value = ""
   }
 
-  const handleWeatherImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleWeatherImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
 
-    if (!file.type.startsWith("image/")) {
+    const processedFile = await optimizeImageForUpload(file).catch((error: unknown) => {
       form.setError("weatherImage", {
         type: "manual",
-        message: "File must be an image",
+        message: error instanceof Error ? error.message : "File must be an image",
       })
+      return null
+    })
+    if (!processedFile) {
+      e.target.value = ""
       return
     }
 
-    if (file.size > 10 * 1024 * 1024) {
-      form.setError("weatherImage", {
-        type: "manual",
-        message: "File exceeds 10MB limit",
-      })
-      return
-    }
-
-    form.setValue("weatherImage", file, {
+    form.setValue("weatherImage", processedFile, {
       shouldValidate: true,
       shouldDirty: true,
     })
 
-    const preview = URL.createObjectURL(file)
+    const preview = URL.createObjectURL(processedFile)
     setWeatherImagePreview(preview)
+    e.target.value = ""
+  }
+
+  // Reverse geocode using OpenStreetMap Nominatim (free, no API key)
+  const reverseGeocode = async (lat: number, lon: number): Promise<string> => {
+    const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`
+    const res = await fetch(url, {
+      headers: { "Accept-Language": locale || "en", "User-Agent": "AgroAI-Diagnosis/1.0" },
+    })
+    if (!res.ok) throw new Error("Geocoding failed")
+    const data = (await res.json()) as { display_name?: string; address?: Record<string, string> }
+    if (data.display_name) return data.display_name
+    // Build from address parts if display_name missing
+    const a = data.address
+    if (a) {
+      const parts = [a.village, a.town, a.city, a.state, a.country].filter(Boolean)
+      if (parts.length) return parts.join(", ")
+    }
+    return `${lat.toFixed(5)}, ${lon.toFixed(5)}`
   }
 
   const handleLocationDetect = () => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          // In a real app, you would reverse geocode these coordinates
-          const lat = position.coords.latitude
-          const lng = position.coords.longitude
-          form.setValue("location", `${lat}, ${lng}`, {
-            shouldValidate: true,
-            shouldDirty: true,
-          })
-        },
-        (error) => {
-          console.error("Error getting location:", error)
-          form.setError("location", {
-            type: "manual",
-            message: "Failed to get location. Please enter manually.",
-          })
-        }
-      )
-    } else {
+    if (!navigator.geolocation) {
       form.setError("location", {
         type: "manual",
         message: "Geolocation is not supported in your browser.",
       })
+      return
     }
+    setIsLocating(true)
+    form.clearErrors("location")
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const lat = position.coords.latitude
+        const lng = position.coords.longitude
+        try {
+          const address = await reverseGeocode(lat, lng)
+          form.setValue("location", address, {
+            shouldValidate: true,
+            shouldDirty: true,
+          })
+        } catch {
+          form.setValue("location", `${lat.toFixed(5)}, ${lng.toFixed(5)}`, {
+            shouldValidate: true,
+            shouldDirty: true,
+          })
+        } finally {
+          setIsLocating(false)
+        }
+      },
+      (error) => {
+        console.error("Error getting location:", error)
+        setIsLocating(false)
+        form.setError("location", {
+          type: "manual",
+          message: "Failed to get location. Please enter manually.",
+        })
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+    )
   }
+
+  // Map Open-Meteo WMO weather code to translation keys for condition and tip (regional language)
+  const getWeatherConditionAndTipKeys = (code: number): { conditionKey: string; tipKey: string } => {
+    if (code === 0) return { conditionKey: "weatherConditionClear", tipKey: "weatherTipClear" }
+    if (code >= 1 && code <= 3) return { conditionKey: "weatherConditionPartlyCloudy", tipKey: "weatherTipPartlyCloudy" }
+    if (code >= 45 && code <= 48) return { conditionKey: "weatherConditionFog", tipKey: "weatherTipFog" }
+    if (code >= 51 && code <= 67) return { conditionKey: "weatherConditionRain", tipKey: "weatherTipRain" }
+    if (code >= 71 && code <= 77) return { conditionKey: "weatherConditionSnow", tipKey: "weatherTipSnow" }
+    if (code >= 80 && code <= 82) return { conditionKey: "weatherConditionRainShowers", tipKey: "weatherTipRainShowers" }
+    if (code >= 85 && code <= 86) return { conditionKey: "weatherConditionSnowShowers", tipKey: "weatherTipSnowShowers" }
+    if (code >= 95 && code <= 99) return { conditionKey: "weatherConditionThunderstorm", tipKey: "weatherTipThunderstorm" }
+    return { conditionKey: "weatherConditionVariable", tipKey: "weatherTipVariable" }
+  }
+
+  // Fetch weather from Open-Meteo (free, no API key) using browser location
+  useEffect(() => {
+    if (typeof window === "undefined" || !navigator.geolocation) {
+      setWeatherLoading(false)
+      return
+    }
+    let cancelled = false
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        if (cancelled) return
+        const { latitude, longitude } = position.coords
+        try {
+          const [weatherRes, locality] = await Promise.all([
+            fetch(
+              `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,weather_code,relative_humidity_2m,precipitation&timezone=auto`
+            ),
+            reverseGeocode(latitude, longitude).catch(() => null),
+          ])
+          if (!weatherRes.ok || cancelled) return
+          const data = (await weatherRes.json()) as {
+            current?: { temperature_2m?: number; weather_code?: number; relative_humidity_2m?: number; precipitation?: number }
+          }
+          const current = data.current
+          if (!current || current.temperature_2m == null || current.weather_code == null) return
+          const { conditionKey, tipKey } = getWeatherConditionAndTipKeys(current.weather_code)
+          if (!cancelled) {
+            setWeatherData({
+              temp: Math.round(current.temperature_2m),
+              conditionKey,
+              tipKey,
+              code: current.weather_code,
+              locality: locality ?? null,
+            })
+          }
+        } catch {
+          // Keep static fallback
+        } finally {
+          if (!cancelled) setWeatherLoading(false)
+        }
+      },
+      () => setWeatherLoading(false),
+      { enableHighAccuracy: false, timeout: 5000, maximumAge: 300000 }
+    )
+    const fallback = setTimeout(() => setWeatherLoading(false), 6000)
+    return () => {
+      cancelled = true
+      clearTimeout(fallback)
+    }
+  }, [])
 
   // Speech Recognition Setup
   useEffect(() => {
@@ -466,7 +654,8 @@ export default function DiagnosisPage() {
       formData.append("weatherCondition", data.weatherCondition)
       if (data.customWeatherCondition) formData.append("customWeatherCondition", data.customWeatherCondition)
       if (data.description) formData.append("description", data.description)
-      
+      formData.append("locale", locale)
+
       // Add images
       data.cropImages.forEach((file) => {
         formData.append("cropImages", file)
@@ -554,10 +743,10 @@ export default function DiagnosisPage() {
               </div>
             </div>
             <h3 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-4 font-[family-name:var(--font-merriweather)]">
-              AI Analysis in Progress
+              {t("aiProgressTitle")}
             </h3>
             <p className="text-lg md:text-xl text-gray-600 dark:text-gray-300 mb-6 leading-relaxed">
-              Our AI is analyzing the uploaded crop with the uploaded image evidence. We'll show you the full report shortly.
+              {t("aiProgressDesc")}
             </p>
             <div className="flex items-center justify-center gap-2 text-sm text-gray-500 dark:text-gray-400">
               <div className="w-2 h-2 bg-[#2F855A] rounded-full animate-bounce" style={{ animationDelay: "0ms" }}></div>
@@ -573,10 +762,10 @@ export default function DiagnosisPage() {
           <div className="mb-8 sm:mb-12">
             <div className="max-w-3xl">
               <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold leading-tight text-gray-900 dark:text-white font-[family-name:var(--font-merriweather)] mb-3 sm:mb-4">
-                Comprehensive Multi-Factor Diagnosis
+                {t("title")}
               </h2>
               <p className="text-sm sm:text-base text-gray-600 dark:text-gray-400 leading-relaxed">
-                Upload multi-modal data including crop visuals, soil reports, and environmental context for maximum AI analysis accuracy.
+                {t("subtitle")}
               </p>
             </div>
           </div>
@@ -592,11 +781,11 @@ export default function DiagnosisPage() {
                       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                         <CardTitle className="text-base sm:text-lg font-medium leading-6 text-gray-900 dark:text-white flex items-center gap-2">
                           <Upload className="w-5 h-5 text-[#2F855A] flex-shrink-0" />
-                          Evidence Sources
+                          {t("evidenceSources")}
                         </CardTitle>
-                        <span className="text-xs font-medium bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 px-2.5 py-0.5 rounded-full w-fit">
-                          Step 1 of 3
-                        </span>
+                        {/* <span className="text-xs font-medium bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 px-2.5 py-0.5 rounded-full w-fit">
+                          {t("step1")}
+                        </span> */}
                       </div>
                     </CardHeader>
                     <CardContent className="space-y-4 sm:space-y-6">
@@ -611,10 +800,10 @@ export default function DiagnosisPage() {
                                 <div className="flex items-center gap-2">
                                   <Leaf className="w-5 h-5 text-[#2F855A] flex-shrink-0" />
                                   <FormLabel className="text-sm font-medium text-gray-900 dark:text-white m-0">
-                                    1. Crop Images <span className="text-red-500">*</span>
+                                    1. {t("cropImages")} <span className="text-red-500">*</span>
                                   </FormLabel>
                                 </div>
-                                <span className="text-xs text-gray-500">Visual Disease Detection</span>
+                                <span className="text-xs text-gray-500">{t("cropImagesHint")}</span>
                               </div>
                               <div className="p-4 sm:p-6">
                                 <FormControl>
@@ -623,10 +812,10 @@ export default function DiagnosisPage() {
                                       <ImageIcon className="mx-auto h-10 w-10 text-gray-400 group-hover:text-[#2F855A] transition-colors" />
                                       <div className="flex text-sm text-gray-600 dark:text-gray-400 justify-center">
                                         <span className="font-medium text-[#2F855A] hover:text-green-600 cursor-pointer">
-                                          Upload visual evidence
+                                          {t("uploadVisual")}
                                         </span>
                                       </div>
-                                      <p className="text-xs text-gray-500 dark:text-gray-500">JPG, PNG up to 10MB</p>
+                                      <p className="text-xs text-gray-500 dark:text-gray-500">{t("imageFormatHint")}</p>
                                     </div>
                                     <input
                                       type="file"
@@ -643,16 +832,16 @@ export default function DiagnosisPage() {
                                       <div key={index} className="relative group flex-shrink-0 w-20 h-20 sm:w-24 sm:h-24">
                                         <Image
                                           src={preview}
-                                          alt={`Crop image ${index + 1}`}
+                                          alt={`${t("cropImageAlt")} ${index + 1}`}
                                           width={96}
                                           height={96}
                                           className="object-cover pointer-events-none group-hover:opacity-75 w-full h-full rounded-lg shadow-sm border border-gray-200 dark:border-gray-700"
                                         />
                                         <button
                                           onClick={() => handleImageRemove(index)}
-                                          className="absolute -top-1.5 -right-1.5 bg-red-500 text-white rounded-full p-0.5 shadow-sm hover:bg-red-600 focus:outline-none transition-colors"
+                                          className="absolute top-1 right-1 z-10 bg-red-500 text-white rounded-full p-1 border-2 border-white dark:border-gray-900 shadow-sm hover:bg-red-600 focus:outline-none transition-colors"
                                           type="button"
-                                          aria-label="Remove image"
+                                          aria-label={t("removeImage")}
                                         >
                                           <X className="w-3 h-3" />
                                         </button>
@@ -680,7 +869,7 @@ export default function DiagnosisPage() {
                                   <div className="flex items-center gap-2">
                                     <Layers className="w-5 h-5 text-[#C05621] flex-shrink-0" />
                                     <FormLabel className="text-sm font-medium text-gray-900 dark:text-white m-0">
-                                      2. Soil Report/Photos
+                                      2. {t("soilReport")}
                                     </FormLabel>
                                   </div>
                                 </div>
@@ -690,10 +879,10 @@ export default function DiagnosisPage() {
                                       <Upload className="w-5 h-5 sm:w-6 sm:h-6 text-[#C05621]" />
                                     </div>
                                     <span className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 mt-3 font-medium">
-                                      Upload PDF or Soil Photo
+                                      {t("soilUploadLabel")}
                                     </span>
                                     <span className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-500 mt-1">
-                                      Nutrient Analysis
+                                      {t("soilUploadSub")}
                                     </span>
                                     <input
                                       type="file"
@@ -708,7 +897,7 @@ export default function DiagnosisPage() {
                                     <div className="relative w-full h-32">
                                       <Image
                                         src={soilReportPreview}
-                                        alt="Soil report preview"
+                                        alt={t("soilReportPreviewAlt")}
                                         fill
                                         className="object-cover rounded-lg"
                                       />
@@ -732,7 +921,7 @@ export default function DiagnosisPage() {
                                   <div className="flex items-center gap-2">
                                     <Cloud className="w-5 h-5 text-blue-500 flex-shrink-0" />
                                     <FormLabel className="text-sm font-medium text-gray-900 dark:text-white m-0">
-                                      3. Weather & Sky
+                                      3. {t("weatherSky")}
                                     </FormLabel>
                                   </div>
                                 </div>
@@ -742,14 +931,15 @@ export default function DiagnosisPage() {
                                       <ImageIcon className="w-5 h-5 sm:w-6 sm:h-6 text-blue-500" />
                                     </div>
                                     <span className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 mt-3 font-medium">
-                                      Upload Sky Conditions
+                                      {t("weatherUploadLabel")}
                                     </span>
                                     <span className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-500 mt-1">
-                                      Atmospheric Risk
+                                      {t("weatherUploadSub")}
                                     </span>
                                     <input
                                       type="file"
                                       accept="image/*"
+                                      capture="environment"
                                       onChange={handleWeatherImageUpload}
                                       className="hidden"
                                     />
@@ -760,7 +950,7 @@ export default function DiagnosisPage() {
                                     <div className="relative w-full h-32">
                                       <Image
                                         src={weatherImagePreview}
-                                        alt="Weather image preview"
+                                        alt={t("weatherImagePreviewAlt")}
                                         fill
                                         className="object-cover rounded-lg"
                                       />
@@ -779,9 +969,9 @@ export default function DiagnosisPage() {
                   {/* Crop & Environmental Details */}
                   <Card className="bg-white dark:bg-[#1F2937] rounded-2xl shadow-[0_4px_6px_-1px_rgba(0,0,0,0.05),0_2px_4px_-1px_rgba(0,0,0,0.03)] border border-gray-200 dark:border-gray-700">
                     <CardHeader className="pb-4 sm:pb-6">
-                      <CardTitle className="text-base sm:text-lg font-medium leading-6 text-gray-900 dark:text-white flex items-center gap-2">
+                        <CardTitle className="text-base sm:text-lg font-medium leading-6 text-gray-900 dark:text-white flex items-center gap-2">
                         <Upload className="w-5 h-5 text-[#2F855A] flex-shrink-0" />
-                        Crop & Environmental Details
+                        {t("cropDetails")}
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-6">
@@ -793,7 +983,7 @@ export default function DiagnosisPage() {
                           render={({ field }) => (
                             <FormItem className="sm:col-span-3">
                               <FormLabel className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                                Crop Type <span className="text-red-500">*</span>
+                                {t("cropType")} <span className="text-red-500">*</span>
                               </FormLabel>
                               <div className="relative">
                                 {/* <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none z-20">
@@ -812,34 +1002,14 @@ export default function DiagnosisPage() {
                                     }}
                                   >
                                     <SelectTrigger className="w-full !h-11 relative z-10">
-                                      <SelectValue />
+                                      <SelectValue placeholder={t("selectCropType")} />
                                     </SelectTrigger>
                                     <SelectContent>
-                                      <SelectItem value="Tomato">Tomato</SelectItem>
-                                      <SelectItem value="Potato">Potato</SelectItem>
-                                      <SelectItem value="Corn (Maize)">Corn (Maize)</SelectItem>
-                                      <SelectItem value="Wheat">Wheat</SelectItem>
-                                      <SelectItem value="Rice">Rice</SelectItem>
-                                      <SelectItem value="Soybean">Soybean</SelectItem>
-                                      <SelectItem value="Cotton">Cotton</SelectItem>
-                                      <SelectItem value="Barley">Barley</SelectItem>
-                                      <SelectItem value="Oats">Oats</SelectItem>
-                                      <SelectItem value="Sorghum">Sorghum</SelectItem>
-                                      <SelectItem value="Pepper">Pepper</SelectItem>
-                                      <SelectItem value="Cucumber">Cucumber</SelectItem>
-                                      <SelectItem value="Lettuce">Lettuce</SelectItem>
-                                      <SelectItem value="Carrot">Carrot</SelectItem>
-                                      <SelectItem value="Onion">Onion</SelectItem>
-                                      <SelectItem value="Cabbage">Cabbage</SelectItem>
-                                      <SelectItem value="Broccoli">Broccoli</SelectItem>
-                                      <SelectItem value="Cauliflower">Cauliflower</SelectItem>
-                                      <SelectItem value="Spinach">Spinach</SelectItem>
-                                      <SelectItem value="Beans">Beans</SelectItem>
-                                      <SelectItem value="Peas">Peas</SelectItem>
-                                      <SelectItem value="Sunflower">Sunflower</SelectItem>
-                                      <SelectItem value="Canola">Canola</SelectItem>
-                                      <SelectItem value="Sugar Beet">Sugar Beet</SelectItem>
-                                      <SelectItem value="Other">Other (Specify)</SelectItem>
+                                      {CROP_TYPE_VALUES.map((value) => (
+                                        <SelectItem key={value} value={value}>
+                                          {t(`cropTypes.${value}`)}
+                                        </SelectItem>
+                                      ))}
                                     </SelectContent>
                                   </Select>
                                 </FormControl>
@@ -853,7 +1023,7 @@ export default function DiagnosisPage() {
                                     <FormItem className="mt-2">
                                       <FormControl>
                                         <Input
-                                          placeholder="Enter crop type..."
+                                          placeholder={t("customCropTypePlaceholder")}
                                           {...field}
                                           className="h-11"
                                         />
@@ -874,7 +1044,7 @@ export default function DiagnosisPage() {
                           render={({ field }) => (
                             <FormItem className="sm:col-span-3">
                               <FormLabel className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                                Growth Stage <span className="text-red-500">*</span>
+                                {t("growthStage")} <span className="text-red-500">*</span>
                               </FormLabel>
                               <div className="relative">
                                 {/* <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none z-20">
@@ -893,18 +1063,14 @@ export default function DiagnosisPage() {
                                     }}
                                   >
                                     <SelectTrigger className="w-full !h-11 relative z-10">
-                                      <SelectValue placeholder="Select growth stage" />
+                                      <SelectValue placeholder={t("selectGrowthStage")} />
                                     </SelectTrigger>
                                     <SelectContent>
-                                      <SelectItem value="Germination">Germination</SelectItem>
-                                      <SelectItem value="Seedling">Seedling</SelectItem>
-                                      <SelectItem value="Vegetative">Vegetative</SelectItem>
-                                      <SelectItem value="Flowering">Flowering</SelectItem>
-                                      <SelectItem value="Fruiting">Fruiting</SelectItem>
-                                      <SelectItem value="Maturation">Maturation</SelectItem>
-                                      <SelectItem value="Harvest">Harvest</SelectItem>
-                                      <SelectItem value="Post-Harvest">Post-Harvest</SelectItem>
-                                      <SelectItem value="Other">Other (Specify)</SelectItem>
+                                      {GROWTH_STAGE_VALUES.map((value) => (
+                                        <SelectItem key={value} value={value}>
+                                          {t(`growthStages.${value}`)}
+                                        </SelectItem>
+                                      ))}
                                     </SelectContent>
                                   </Select>
                                 </FormControl>
@@ -918,7 +1084,7 @@ export default function DiagnosisPage() {
                                     <FormItem className="mt-2">
                                       <FormControl>
                                         <Input
-                                          placeholder="Enter growth stage..."
+                                          placeholder={t("customGrowthStagePlaceholder")}
                                           {...field}
                                           className="h-11"
                                         />
@@ -939,7 +1105,7 @@ export default function DiagnosisPage() {
                           render={({ field }) => (
                             <FormItem className="sm:col-span-6">
                               <FormLabel className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                                Farm Location <span className="text-red-500">*</span>
+                                {t("location")} <span className="text-red-500">*</span>
                               </FormLabel>
                               <div className="flex flex-col sm:flex-row gap-2 sm:gap-0">
                                 <div className="relative flex-grow focus-within:z-10">
@@ -950,7 +1116,7 @@ export default function DiagnosisPage() {
                                   </div>
                                   <FormControl>
                                     <Input
-                                      placeholder="Start typing address or coordinates..."
+                                      placeholder={t("locationPlaceholder")}
                                       {...field}
                                       className="pl-10 sm:rounded-none sm:rounded-l-md h-11 relative z-10"
                                     />
@@ -960,11 +1126,16 @@ export default function DiagnosisPage() {
                                   type="button"
                                   variant="outline"
                                   onClick={handleLocationDetect}
-                                  className="sm:-ml-px sm:rounded-none sm:rounded-r-md border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 h-11"
+                                  disabled={isLocating}
+                                  className="sm:-ml-px sm:rounded-none sm:rounded-r-md border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 h-11 disabled:opacity-70"
                                 >
-                                  <Navigation className="w-4 h-4 sm:mr-2" />
-                                  <span className="hidden sm:inline">Locate Me</span>
-                                  <span className="sm:hidden">Locate</span>
+                                  {isLocating ? (
+                                    <Loader2 className="w-4 h-4 sm:mr-2 animate-spin" />
+                                  ) : (
+                                    <Navigation className="w-4 h-4 sm:mr-2" />
+                                  )}
+                                  <span className="hidden sm:inline">{isLocating ? t("locating") : t("locateMe")}</span>
+                                  <span className="sm:hidden">{isLocating ? t("locatingShort") : t("locateShort")}</span>
                                 </Button>
                               </div>
                               <FormMessage />
@@ -979,7 +1150,7 @@ export default function DiagnosisPage() {
                           render={({ field }) => (
                             <FormItem className="sm:col-span-3">
                               <FormLabel className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                                Soil Condition <span className="text-red-500">*</span>
+                                {t("soilCondition")} <span className="text-red-500">*</span>
                               </FormLabel>
                               <FormControl>
                                 <Select
@@ -992,17 +1163,14 @@ export default function DiagnosisPage() {
                                   }}
                                 >
                                   <SelectTrigger className="w-full !h-11">
-                                    <SelectValue placeholder="Select soil condition" />
+                                    <SelectValue placeholder={t("selectSoilCondition")} />
                                   </SelectTrigger>
                                   <SelectContent>
-                                    <SelectItem value="Well-drained">Well-drained</SelectItem>
-                                    <SelectItem value="Clay">Clay</SelectItem>
-                                    <SelectItem value="Sandy">Sandy</SelectItem>
-                                    <SelectItem value="Loamy">Loamy</SelectItem>
-                                    <SelectItem value="Silty">Silty</SelectItem>
-                                    <SelectItem value="Waterlogged">Waterlogged</SelectItem>
-                                    <SelectItem value="Dry">Dry</SelectItem>
-                                    <SelectItem value="Other">Other (Specify)</SelectItem>
+                                    {SOIL_CONDITION_VALUES.map((value) => (
+                                      <SelectItem key={value} value={value}>
+                                        {t(`soilConditions.${value}`)}
+                                      </SelectItem>
+                                    ))}
                                   </SelectContent>
                                 </Select>
                               </FormControl>
@@ -1015,7 +1183,7 @@ export default function DiagnosisPage() {
                                     <FormItem className="mt-2">
                                       <FormControl>
                                         <Input
-                                          placeholder="Enter soil condition..."
+                                          placeholder={t("customSoilConditionPlaceholder")}
                                           {...field}
                                           className="h-11"
                                         />
@@ -1036,7 +1204,7 @@ export default function DiagnosisPage() {
                           render={({ field }) => (
                             <FormItem className="sm:col-span-3">
                               <FormLabel className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                                Recent Weather <span className="text-red-500">*</span>
+                                {t("weatherCondition")} <span className="text-red-500">*</span>
                               </FormLabel>
                               <FormControl>
                                 <Select
@@ -1049,18 +1217,14 @@ export default function DiagnosisPage() {
                                   }}
                                 >
                                   <SelectTrigger className="w-full !h-11">
-                                    <SelectValue placeholder="Select weather condition" />
+                                    <SelectValue placeholder={t("selectWeatherCondition")} />
                                   </SelectTrigger>
                                   <SelectContent>
-                                    <SelectItem value="Sunny">Sunny</SelectItem>
-                                    <SelectItem value="Cloudy">Cloudy</SelectItem>
-                                    <SelectItem value="Rainy">Rainy</SelectItem>
-                                    <SelectItem value="Humid">Humid</SelectItem>
-                                    <SelectItem value="Dry">Dry</SelectItem>
-                                    <SelectItem value="Windy">Windy</SelectItem>
-                                    <SelectItem value="Frost">Frost</SelectItem>
-                                    <SelectItem value="Drought">Drought</SelectItem>
-                                    <SelectItem value="Other">Other (Specify)</SelectItem>
+                                    {WEATHER_CONDITION_VALUES.map((value) => (
+                                      <SelectItem key={value} value={value}>
+                                        {t(`weatherConditions.${value}`)}
+                                      </SelectItem>
+                                    ))}
                                   </SelectContent>
                                 </Select>
                               </FormControl>
@@ -1073,7 +1237,7 @@ export default function DiagnosisPage() {
                                     <FormItem className="mt-2">
                                       <FormControl>
                                         <Input
-                                          placeholder="Enter weather condition..."
+                                          placeholder={t("customWeatherConditionPlaceholder")}
                                           {...field}
                                           className="h-11"
                                         />
@@ -1094,15 +1258,15 @@ export default function DiagnosisPage() {
                           render={({ field }) => (
                             <FormItem className="sm:col-span-6">
                               <FormLabel className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                                Additional Description
+                                {t("additionalDesc")}
                                 <span className="text-xs text-gray-500 dark:text-gray-400 ml-2 font-normal">
-                                  (Optional - Describe symptoms, observations, or concerns)
+                                  {t("additionalDescHint")}
                                 </span>
                               </FormLabel>
                               <div className="relative">
                                 <FormControl>
                                   <Textarea
-                                    placeholder="Describe any symptoms, observations, or concerns about your crops. You can type or use the microphone to record your description..."
+                                    placeholder={t("descriptionPlaceholder")}
                                     {...field}
                                     rows={5}
                                     className="w-full px-4 py-3 pr-24 rounded-xl border border-gray-200 dark:border-gray-700 focus:ring-2 focus:ring-[#2F855A] focus:border-[#2F855A] transition-all resize-none text-gray-800 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-500"
@@ -1120,7 +1284,7 @@ export default function DiagnosisPage() {
                                       type="button"
                                       onClick={stopRecording}
                                       className="h-9 w-9 p-0 bg-red-500 hover:bg-red-600 text-white rounded-full shadow-md"
-                                      title="Stop Recording"
+                                      title={t("stopRecording")}
                                     >
                                       <Square className="w-4 h-4" />
                                     </Button>
@@ -1130,7 +1294,7 @@ export default function DiagnosisPage() {
                                       onClick={startRecording}
                                       disabled={!recognition}
                                       className="h-9 w-9 p-0 bg-[#2F855A] hover:bg-[#1B5E20] text-white rounded-full shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
-                                      title="Start Voice Recording"
+                                      title={t("startVoiceRecording")}
                                     >
                                       <Mic className="w-4 h-4" />
                                     </Button>
@@ -1139,7 +1303,7 @@ export default function DiagnosisPage() {
                               </div>
                               {!recognition && (
                                 <FormDescription className="text-xs text-amber-600 dark:text-amber-400 mt-1">
-                                  Voice recording requires Chrome, Edge, or Safari browser
+                                  {t("voiceRecordingUnsupported")}
                                 </FormDescription>
                               )}
                               <FormMessage />
@@ -1162,11 +1326,11 @@ export default function DiagnosisPage() {
                         >
                           <BarChart3 className="w-5 h-5 mr-2" />
                           {form.formState.isSubmitting || isAnalyzing ? (
-                            <span>Analyzing with AI...</span>
+                            <span>{t("analyzing")}</span>
                           ) : (
                             <>
-                              <span className="hidden sm:inline">Run Comprehensive Analysis</span>
-                              <span className="sm:hidden">Run Analysis</span>
+                              <span className="hidden sm:inline">{t("runAnalysis")}</span>
+                              <span className="sm:hidden">{t("runAnalysisShort")}</span>
                             </>
                           )}
                         </Button>
@@ -1177,67 +1341,96 @@ export default function DiagnosisPage() {
 
                 {/* Sidebar */}
                 <div className="lg:col-span-1 space-y-6 lg:space-y-8">
-                  {/* Agricultural Tips */}
+                  {/* How to use AI report for best yield */}
                   <Card className="bg-white dark:bg-[#1F2937] rounded-2xl shadow-[0_4px_6px_-1px_rgba(0,0,0,0.05),0_2px_4px_-1px_rgba(0,0,0,0.03)] border border-gray-200 dark:border-gray-700">
                     <CardHeader className="pb-4">
                       <CardTitle className="text-base sm:text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
                         <Lightbulb className="w-5 h-5 text-[#C05621] flex-shrink-0" />
-                        <span className="text-sm sm:text-base">Agricultural Tips: Tomato</span>
+                        <span className="text-sm sm:text-base">{t("tipsReportTitle")}</span>
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-3 sm:space-y-4">
                       <div className="flex items-start gap-3 p-3 bg-green-50 dark:bg-green-900/10 rounded-xl border border-green-100 dark:border-green-800/30 hover:shadow-md transition-all cursor-default group">
                         <div className="flex-shrink-0 bg-white dark:bg-gray-800 p-2 rounded-lg shadow-sm group-hover:bg-[#2F855A] transition-colors">
-                          <Scissors className="w-5 h-5 text-[#2F855A] group-hover:text-white" />
+                          <Sparkles className="w-5 h-5 text-[#2F855A] group-hover:text-white" />
                         </div>
                         <div>
-                          <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">Proper Tomato Pruning</p>
+                          <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{t("reportTip1Title")}</p>
                           <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 leading-snug">
-                            Remove suckers from leaf axils to direct energy toward fruit and improve airflow.
+                            {t("reportTip1Desc")}
                           </p>
                         </div>
                       </div>
 
                       <div className="flex items-start gap-3 p-3 bg-orange-50 dark:bg-orange-900/10 rounded-xl border border-orange-100 dark:border-orange-800/30 hover:shadow-md transition-all cursor-default group">
                         <div className="flex-shrink-0 bg-white dark:bg-gray-800 p-2 rounded-lg shadow-sm group-hover:bg-[#C05621] transition-colors">
-                          <Thermometer className="w-5 h-5 text-[#C05621] group-hover:text-white" />
+                          <Layers className="w-5 h-5 text-[#C05621] group-hover:text-white" />
                         </div>
                         <div>
-                          <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">Optimal Soil Temperature</p>
+                          <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{t("reportTip2Title")}</p>
                           <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 leading-snug">
-                            Tomatoes thrive in soil between 21-29°C. Use organic mulch to help regulate root temperature.
+                            {t("reportTip2Desc")}
                           </p>
                         </div>
                       </div>
 
                       <div className="flex items-start gap-3 p-3 bg-blue-50 dark:bg-blue-900/10 rounded-xl border border-blue-100 dark:border-blue-800/30 hover:shadow-md transition-all cursor-default group">
                         <div className="flex-shrink-0 bg-white dark:bg-gray-800 p-2 rounded-lg shadow-sm group-hover:bg-blue-500 transition-colors">
-                          <Droplets className="w-5 h-5 text-blue-500 group-hover:text-white" />
+                          <RefreshCw className="w-5 h-5 text-blue-500 group-hover:text-white" />
                         </div>
                         <div>
-                          <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">Consistent Watering</p>
+                          <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{t("reportTip3Title")}</p>
                           <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 leading-snug">
-                            Maintain even moisture to prevent blossom end rot and fruit cracking during fruit set.
+                            {t("reportTip3Desc")}
                           </p>
                         </div>
                       </div>
                     </CardContent>
                   </Card>
 
-                  {/* Weather Alert */}
+                  {/* Weather Alert - live from Open-Meteo when location available, else static fallback */}
                   <Card className="bg-gradient-to-br from-[#2F855A] to-green-800 rounded-2xl shadow-[0_4px_6px_-1px_rgba(0,0,0,0.05),0_2px_4px_-1px_rgba(0,0,0,0.03)] p-5 sm:p-6 text-white relative overflow-hidden">
-                    <div className="absolute top-0 right-0 -mr-8 -mt-8 w-32 h-32 bg-white opacity-10 rounded-full"></div>
-                    <h4 className="text-xs sm:text-sm font-medium opacity-90 mb-3">Local Weather Alert</h4>
-                    <div className="flex items-center gap-3 mb-3">
-                      <CloudRain className="w-8 h-8 sm:w-10 sm:h-10 flex-shrink-0" />
-                      <div>
-                        <p className="text-lg sm:text-xl font-bold">Heavy Rain</p>
-                        <p className="text-xs opacity-80">Expected in 2 hours</p>
+                    <div className="absolute top-0 right-0 -mr-8 -mt-8 w-32 h-32 bg-white opacity-10 rounded-full" />
+                    <h4 className="text-xs sm:text-sm font-medium opacity-90 mb-3">{t("weatherAlertTitle")}</h4>
+                    {weatherLoading ? (
+                      <div className="flex items-center gap-3">
+                        <Loader2 className="w-8 h-8 sm:w-10 sm:h-10 flex-shrink-0 animate-spin opacity-90" />
+                        <p className="text-sm opacity-90">{t("weatherLoading")}</p>
                       </div>
-                    </div>
-                    <p className="text-xs sm:text-sm opacity-90 leading-relaxed">
-                      High humidity following rain increases risk of fungal infections. Check drainage.
-                    </p>
+                    ) : weatherData ? (
+                      <>
+                        {weatherData.locality && (
+                          <p className="text-xs opacity-85 mb-2 font-medium">{t("weatherFor")} {weatherData.locality}</p>
+                        )}
+                        <div className="flex items-center gap-3 mb-3">
+                          {weatherData.code >= 51 && weatherData.code <= 86 ? (
+                            <CloudRain className="w-8 h-8 sm:w-10 sm:h-10 flex-shrink-0" />
+                          ) : weatherData.code >= 1 && weatherData.code <= 3 ? (
+                            <Cloud className="w-8 h-8 sm:w-10 sm:h-10 flex-shrink-0" />
+                          ) : (
+                            <Sun className="w-8 h-8 sm:w-10 sm:h-10 flex-shrink-0" />
+                          )}
+                          <div>
+                            <p className="text-lg sm:text-xl font-bold">{t(weatherData.conditionKey)}</p>
+                            <p className="text-xs opacity-80">{weatherData.temp}°C</p>
+                          </div>
+                        </div>
+                        <p className="text-xs sm:text-sm opacity-90 leading-relaxed">{t(weatherData.tipKey)}</p>
+                      </>
+                    ) : (
+                      <>
+                        <div className="flex items-center gap-3 mb-3">
+                          <CloudRain className="w-8 h-8 sm:w-10 sm:h-10 flex-shrink-0" />
+                          <div>
+                            <p className="text-lg sm:text-xl font-bold">{t("weatherAlertType")}</p>
+                            <p className="text-xs opacity-80">{t("weatherAlertTime")}</p>
+                          </div>
+                        </div>
+                        <p className="text-xs sm:text-sm opacity-90 leading-relaxed">
+                          {t("weatherAlertDesc")}
+                        </p>
+                      </>
+                    )}
                   </Card>
                 </div>
               </div>

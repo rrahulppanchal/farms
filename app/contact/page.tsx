@@ -86,10 +86,10 @@ export default function Contact() {
                       <div>
                         <p className="font-bold text-[#1A2E1A]">Support Email</p>
                         <a
-                          href="mailto:support@agroai.tech"
+                          href="mailto:support@agroailtd.com"
                           className="text-[#4B634B] hover:text-[#2E7D32] transition-colors"
                         >
-                          support@agroai.tech
+                          support@agroailtd.com
                         </a>
                       </div>
                     </div>
@@ -101,9 +101,7 @@ export default function Contact() {
                       <div>
                         <p className="font-bold text-[#1A2E1A]">Headquarters</p>
                         <p className="text-[#4B634B] leading-relaxed">
-                          1245 Agriculture Way, Suite 400
-                          <br />
-                          San Francisco, CA 94107, USA
+                          HSR Layout, Ahmedabad, Gujarat, India
                         </p>
                       </div>
                     </div>
@@ -262,17 +260,17 @@ export default function Contact() {
                   <MessageCircle className="w-8 h-8 text-green-500 group-hover:scale-110 transition-transform" />
                   <div className="text-left">
                     <p className="text-xs text-[#4B634B] font-semibold uppercase">WhatsApp Support</p>
-                    <p className="text-[#1A2E1A] font-bold">+1 (555) 012-3456</p>
+                    <p className="text-[#1A2E1A] font-bold">+91 812 712 9312</p>
                   </div>
                 </Link>
                 <Link
-                  href="tel:+18005550199"
+                  href="tel:+918127129312"
                   className="flex items-center gap-3 px-8 py-4 bg-white border border-gray-100 rounded-2xl hover:border-[#2E7D32]/30 transition-all shadow-[0_4px_20px_-2px_rgba(0,0,0,0.05)] group"
                 >
                   <Phone className="w-8 h-8 text-[#2E7D32] group-hover:scale-110 transition-transform" />
                   <div className="text-left">
-                    <p className="text-xs text-[#4B634B] font-semibold uppercase">Toll Free Phone</p>
-                    <p className="text-[#1A2E1A] font-bold">1-800-AGRO-AI-99</p>
+                    <p className="text-xs text-[#4B634B] font-semibold uppercase">Phone</p>
+                    <p className="text-[#1A2E1A] font-bold">+91 812 712 9312</p>
                   </div>
                 </Link>
               </div>
