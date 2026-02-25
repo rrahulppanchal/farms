@@ -821,7 +821,6 @@ export default function DiagnosisPage() {
                                       type="file"
                                       multiple
                                       accept="image/*"
-                                      capture="environment"
                                       onChange={handleImageUpload}
                                       className="hidden"
                                     />

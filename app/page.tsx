@@ -41,11 +41,11 @@ export default async function Home() {
           />
         </div>
         <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-14 md:py-20 text-center sm:text-left">
-          <div className="inline-flex items-center gap-2 text-white/90 font-semibold text-[10px] sm:text-xs tracking-[0.28em] uppercase mb-4 sm:mb-6">
-            <span className="relative flex h-2 w-2">
+          <div className="inline-flex items-center gap-2 text-white/90 font-semibold text-[9px] sm:text-xs tracking-[0.28em] uppercase mb-4 sm:mb-6 border border-white rounded-full px-2.5 py-0.5">
+            {/* <span className="relative flex h-2 w-2">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#86EFAC]/70 opacity-70"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-[#86EFAC]"></span>
-            </span>
+            </span> */}
             {t("badge")}
           </div>
           <h1 className="max-w-3xl mx-auto sm:mx-0 font-[family-name:var(--font-merriweather)] text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold text-white mb-4 sm:mb-6 leading-[1.08] drop-shadow-sm">
@@ -70,7 +70,7 @@ export default async function Home() {
               <Button
                 variant="outline"
                 size="lg"
-                className="w-full sm:w-auto px-5 py-2.5 sm:px-7 sm:py-3.5 bg-white/12 hover:bg-white/20 text-white hover:text-white border-white/50 rounded-md font-semibold text-sm sm:text-base transition-all flex items-center justify-center gap-2"
+                className="bg-transparent w-full sm:w-auto px-5 py-2.5 sm:px-7 sm:py-3.5 border-[#2E7D32] hover:bg-[#2E7D32]/10 text-[#2E7D32] hover:text-[#276526] border-2 rounded-md font-semibold text-sm sm:text-base transition-all flex items-center justify-center gap-2"
               >
                 <PlayCircle className="w-4 h-4 sm:w-5 sm:h-5" />
                 {t("ctaDemo")}
